@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
+<h2>{{ date | datetimeformat('%d. %b %Y') }}</h2>
+
+<a href="/showdetection?date={{ date }}" style="margin-top: 20px; display: inline-block;">&larr; Tilbake til registreringer</a>
+
+<p>Totalt antall registreringer: {{ total_detections }}</p>
+
+<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+    <thead>
+        <tr>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Tidspunkt</th>
+            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Lydklipp</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for detection in detections %}
+        <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ detection.timestamp | datetimeformat('%H:%M:%S') }}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd;">
+                <a href="/static/audio/chunk_{{ detection.chunk_index }}_0.mp3" target="_blank">
+                    chunk_{{ detection.chunk_index }}_0.mp3
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

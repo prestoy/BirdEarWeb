@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Dager med lydregistrering av fugler{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+<table>
+    <tr>
+        {% for day in calendar %}
+            <td style="background-color: {% if day.has_detections %}lightgreen{% else %}white{% endif %}; text-align: center; padding: 10px; border: 1px solid #ddd;">
+                {% if day.has_detections %}
+                    <a href="/showdetection?date={{ year }}-{{ '%02d'|format(month) }}-{{ '%02d'|format(day.day) }}">
+                        {{ day.day }}
+                    </a>
+                {% else %}
+                    {{ day.day }}
+                {% endif %}
+            </td>
+            {% if loop.index % 7 == 0 %}
+                </tr><tr>
+            {% endif %}
+        {% endfor %}
+    </tr>
+</table>
+<div style="margin-top: 20px; text-align: center;">
+    <a href="/?year={{ year }}&month={{ month - 1 }}">Forrige måned</a> |
+    <a href="/?year={{ year }}&month={{ month + 1 }}">Neste måned</a>
+</div>
+{% endblock %}

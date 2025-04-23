@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Default Title{% endblock %}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px; /* Mobilskjerm i landskapsformat */
+            background: white;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        a {
+            text-decoration: none;
+            color: #007BFF;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .detection-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .names {
+            flex: 1;
+            min-width: 150px;
+            padding-right: 20px;
+        }
+        .names strong {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .names em {
+            font-style: italic;
+            font-size: 14px;
+            color: #555;
+        }
+        .histogram {
+            flex: 2;
+            min-width: 200px;
+            text-align: center;
+        }
+        .histogram .total {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .histogram .bars {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            height: 100px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        .histogram .bar {
+            width: 4%;
+            background-color: lightblue;
+            transition: height 0.3s ease;
+        }
+        .histogram .bar:hover {
+            background-color: #007BFF;
+        }
+        .species-link {
+            text-decoration: none;
+            color: inherit; /* Bruker normal tekstfarge */
+        }
+
+        .species-link:hover {
+            color: #007bff; /* Standard lenkefarge ved hover */
+            text-decoration: underline; /* Understreker ved hover */
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
