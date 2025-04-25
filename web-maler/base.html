@@ -9,15 +9,12 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
             background-color: #f4f4f4;
         }
         .container {
             width: 100%;
-            max-width: 480px; /* Mobilskjerm i landskapsformat */
+            max-width: 1000px;
+            margin: 20px auto;
             background: white;
             padding: 20px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -55,30 +52,51 @@
             color: #555;
         }
         .histogram {
-            flex: 2;
-            min-width: 200px;
-            text-align: center;
-        }
-        .histogram .total {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .histogram .bars {
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            height: 100px;
-            border-bottom: 1px solid #ccc;
-            padding-bottom: 5px;
+            height: 100px; /* Histogrammets høyde */
+            border-left: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 20px;
         }
-        .histogram .bar {
-            width: 4%;
-            background-color: lightblue;
-            transition: height 0.3s ease;
+        .bar-container {
+            flex: 1;
+            text-align: center;
+            margin: 0 5px;
+            height: 100%; /* Sørg for at bar-container fyller hele høyden til histogram */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Plasser stolpen nederst */
         }
-        .histogram .bar:hover {
-            background-color: #007BFF;
+        .bar {
+            width: 100%;
+            background-color: #d1e7ff;
+            transition: background-color 0.3s ease;
+            position: relative; /* Gjør det mulig å plassere <a> inni */
+        }
+        .bar a {
+            display: block;
+            width: 100%;
+            height: 100%; /* Sørg for at <a> fyller hele høyden til .bar */
+            position: absolute;
+            top: 0;
+            left: 0;
+            text-decoration: none; /* Fjern standard lenkestil */
+        }
+        .bar:hover {
+            background-color: #007bff;
+        }
+        .bar-label {
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            display: block;
+        }
+        .hour-label {
+            font-size: 0.8em;
+            margin-top: 5px;
+            display: block;
         }
         .species-link {
             text-decoration: none;
@@ -88,6 +106,96 @@
         .species-link:hover {
             color: #007bff; /* Standard lenkefarge ved hover */
             text-decoration: underline; /* Understreker ved hover */
+        }
+
+        /* Stil for registreringsrader */
+        .detection-row {
+            display: flex;
+            flex-wrap: wrap; /* Gjør at elementene flyter til neste linje hvis plassen er liten */
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        /* Venstre del: Metadata */
+        .detection-metadata {
+            flex: 1; /* Tar opp tilgjengelig plass */
+            min-width: 200px; /* Minimum bredde for metadata */
+            margin-right: 20px;
+        }
+
+        /* Høyre del: Avspiller */
+        .detection-player {
+            flex: 1; /* Tar opp tilgjengelig plass */
+            min-width: 200px; /* Minimum bredde for avspilleren */
+        }
+
+        /* Responsiv design for små skjermer */
+        @media (max-width: 600px) {
+            .detection-row {
+                flex-direction: column; /* Legg elementene oppå hverandre */
+            }
+
+            .detection-metadata,
+            .detection-player {
+                margin-right: 0; /* Fjern margin mellom elementene */
+            }
+        }
+
+        /* Generell styling for kalender */
+        .calendar {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            font-family: Arial, sans-serif;
+        }
+
+        .calendar th {
+            padding: 10px;
+            border-bottom: 2px solid #ddd;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .calendar td {
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+
+        .calendar td a {
+            text-decoration: none;
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .calendar td span {
+            color: #aaa;
+        }
+
+        .calendar th:nth-child(6),
+        .calendar th:nth-child(7),
+        .calendar td:nth-child(6) a,
+        .calendar td:nth-child(7) a {
+            color: #d9534f; /* Rød farge for lørdag og søndag */
+        }
+
+        .month-navigation {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .month-navigation a {
+            text-decoration: none;
+            color: #007bff;
+            font-weight: bold;
+            margin: 0 20px;
+        }
+
+        .month-navigation .current-month {
+            font-size: 1.5em;
+            font-weight: bold;
         }
     </style>
     {% block extra_css %}{% endblock %}

@@ -1,29 +1,44 @@
 {% extends "base.html" %}
 
-{% block title %}Dager med lydregistrering av fugler{% endblock %}
+{% block title %}{{ title }}{% endblock %}
 
 {% block content %}
 <h1>{{ title }}</h1>
-<table>
-    <tr>
-        {% for day in calendar %}
-            <td style="background-color: {% if day.has_detections %}lightgreen{% else %}white{% endif %}; text-align: center; padding: 10px; border: 1px solid #ddd;">
-                {% if day.has_detections %}
-                    <a href="/showdetection?date={{ year }}-{{ '%02d'|format(month) }}-{{ '%02d'|format(day.day) }}">
-                        {{ day.day }}
-                    </a>
-                {% else %}
-                    {{ day.day }}
-                {% endif %}
-            </td>
-            {% if loop.index % 7 == 0 %}
-                </tr><tr>
-            {% endif %}
-        {% endfor %}
-    </tr>
-</table>
-<div style="margin-top: 20px; text-align: center;">
-    <a href="/?year={{ year }}&month={{ month - 1 }}">Forrige måned</a> |
-    <a href="/?year={{ year }}&month={{ month + 1 }}">Neste måned</a>
+
+<!-- Navigasjon for måneder -->
+<div class="month-navigation" style="text-align: center; margin-bottom: 20px;">
+    <a href="/?year={{ prev_month.year }}&month={{ prev_month.month }}" class="prev-month" style="margin-right: 20px;">&larr; Forrige måned</a>
+    <span class="current-month" style="font-size: 1.5em; font-weight: bold;">{{ month | month_name }} {{ year }}</span>
+    <a href="/?year={{ next_month.year }}&month={{ next_month.month }}" class="next-month" style="margin-left: 20px;">Neste måned &rarr;</a>
 </div>
+
+<table class="calendar" style="width: 100%; border-collapse: collapse; margin: 0 auto;">
+    <thead>
+        <tr>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Man</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Tir</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Ons</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Tor</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Fre</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd; color: #d9534f;">Lør</th>
+            <th style="padding: 10px; border-bottom: 2px solid #ddd; color: #d9534f;">Søn</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            {% for day in calendar %}
+                {% if loop.index0 % 7 == 0 and not loop.first %}
+                    </tr><tr>
+                {% endif %}
+                <td style="padding: 15px; text-align: center; border: 1px solid #ddd;">
+                    {% if day.has_detections %}
+                        <a href="{{ day.link }}" style="text-decoration: none; color: #007bff; font-weight: bold;">{{ day.day }}</a>
+                    {% else %}
+                        <span style="color: #aaa;">{{ day.day }}</span>
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+    </tbody>
+</table>
 {% endblock %}

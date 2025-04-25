@@ -43,6 +43,15 @@ def datetimeformat(value, format='%d. %b %Y'):
 
 templates.env.filters['datetimeformat'] = datetimeformat
 
+def month_name(month):
+    months = [
+        "Januar", "Februar", "Mars", "April", "Mai", "Juni",
+        "Juli", "August", "September", "Oktober", "November", "Desember"
+    ]
+    return months[month - 1]
+
+templates.env.filters['month_name'] = month_name
+
 # Mount statiske filer (for CSS, JS, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -102,18 +111,24 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
         today = datetime.today()
         year, month = today.year, today.month
 
+    # Beregn forrige og neste måned
+    first_day = datetime(year, month, 1)
+    prev_month = (first_day - timedelta(days=1)).replace(day=1)
+    next_month = (first_day + timedelta(days=31)).replace(day=1)
+
     # Hent dager med detections
     detection_days = get_detection_days(year, month)
 
     # Generer kalenderdata
-    first_day = datetime(year, month, 1)
     last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
     calendar = []
     current_day = first_day
     while current_day <= last_day:
+        day_str = current_day.strftime("%Y-%m-%d")
         calendar.append({
             "day": current_day.day,
-            "has_detections": current_day.strftime("%Y-%m-%d") in detection_days
+            "has_detections": day_str in detection_days,
+            "link": f"/show_detections?date={day_str}" if day_str in detection_days else None
         })
         current_day += timedelta(days=1)
 
@@ -122,12 +137,14 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
         "year": year,
         "month": month,
         "calendar": calendar,
+        "prev_month": {"year": prev_month.year, "month": prev_month.month},
+        "next_month": {"year": next_month.year, "month": next_month.month},
         "title": "Dager med lydregistrering av fugler"
     })
 
-# "/showdetection" - Vis arter for en gitt dato
-@app.get("/showdetection", response_class=HTMLResponse)
-async def show_detection(request: Request, date: str, min_conf: float = 0.5):
+# "/show_detections" - Vis arter for en gitt dato
+@app.get("/show_detections", response_class=HTMLResponse)
+async def show_detections(request: Request, date: str, min_conf: float = 0.5):
     detections = get_detections_for_date(date, min_conf)
 
     # Organiser detections etter art og time
@@ -158,29 +175,42 @@ async def show_detection(request: Request, date: str, min_conf: float = 0.5):
         "title": f"Deteksjoner for {date}"
     })
 
-# "/species_day_details" - Vis registreringstidspunkter for en art på en gitt dato
-@app.get("/species_day_details", response_class=HTMLResponse)
-async def species_day_details(request: Request, scientific_name: str, date: str):
+# "/species_details" - Vis registreringstidspunkter for en art på en gitt dato, med valgfri timefilter
+@app.get("/species_details", response_class=HTMLResponse)
+async def species_details(request: Request, scientific_name: str, date: str, hour: int = None):
     # Konverter understrek til mellomrom
     scientific_name = scientific_name.replace("_", " ")
 
     conn = sqlite3.connect(config["db-path"])
     cursor = conn.cursor()
     
-    # Hent registreringstidspunkter og tidsrom for analysen
-    cursor.execute('''
-        SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
-                        chunk_index, 
-                        start_time, 
-                        end_time
-        FROM detections
-        WHERE DATE(timestamp) = ? AND scientific_name = ?
-        ORDER BY formatted_timestamp
-    ''', (date, scientific_name))
+    # Bygg SQL-spørring basert på om hour er angitt
+    if hour is not None:
+        cursor.execute('''
+            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
+                            chunk_index, 
+                            start_time, 
+                            end_time
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ?
+            ORDER BY formatted_timestamp
+        ''', (date, scientific_name, f"{hour:02d}"))
+    else:
+        cursor.execute('''
+            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
+                            chunk_index, 
+                            start_time, 
+                            end_time
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ?
+            ORDER BY formatted_timestamp
+        ''', (date, scientific_name))
+    
+    # Generer detections-listen
     detections = [{
         "timestamp": row[0],
         "chunk_index": row[1],
-        "audio_file": f"/audio/{row[1]}",  # Bruk URL-stien som matcher app.mount
+        "audio_file": f"/audio/{row[1]}",  # Korrekt URL-sti for lydfilen
         "start_time": row[2],
         "end_time": row[3]
     } for row in cursor.fetchall()]
@@ -194,6 +224,7 @@ async def species_day_details(request: Request, scientific_name: str, date: str)
         "scientific_name": scientific_name,
         "common_name": common_name,
         "date": date,
+        "hour": hour,
         "detections": detections,
         "total_detections": len(detections),
         "title": f"Detaljer for {common_name} ({scientific_name})"

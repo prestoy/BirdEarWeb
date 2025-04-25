@@ -4,47 +4,27 @@
 
 {% block content %}
 <h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
-<p>Dato: {{ date }}</p>
+<h2>Dato: {{ date }}</h2>
 
 <!-- Lenke for å gå tilbake -->
-<a href="/showdetection?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a>
+<p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a></p>
 
 <div>
     {% for detection in detections %}
         <div class="detection-row">
-            <p><strong>Tidspunkt:</strong> {{ detection.timestamp }}</p>
-            <p><strong>Chunk:</strong> {{ detection.chunk_index }}</p>
-            
-            <!-- Lydspiller -->
-            <audio controls>
-                <source src="{{ detection.audio_file }}" type="audio/mpeg">
-                Nettleseren din støtter ikke lydavspilling.
-            </audio>
-            
-            <!-- Markering av tidsrom -->
-            <p>
-                <strong>Markert tidsrom:</strong> 
-                Start: {{ detection.start_time }} sek, 
-                Slutt: {{ detection.end_time }} sek
-            </p>
-            <script>
-                // JavaScript for å markere tidsrommet i lydspilleren
-                const audio = document.getElementById('audio-{{ detection.chunk_index }}');
-                audio.addEventListener('loadedmetadata', () => {
-                    const start = {{ detection.start_time }};
-                    const end = {{ detection.end_time }};
-                    
-                    // Sett starttidspunkt
-                    audio.currentTime = start;
-
-                    // Stopp avspillingen ved sluttidspunkt
-                    audio.addEventListener('timeupdate', () => {
-                        if (audio.currentTime > end) {
-                            audio.pause();
-                        }
-                    });
-                });
-            </script>
+            <!-- Venstre del: Metadata -->
+            <div class="detection-metadata">
+                <p><strong>Tidspunkt:</strong> {{ detection.timestamp }}</p>
+                <p><strong>Markert tidsrom:</strong> Start: {{ detection.start_time }} sek, Slutt: {{ detection.end_time }} sek</p>
+                <p><strong>Lydfil:</strong> {{ detection.chunk_index }}</p>
+            </div>
+            <!-- Høyre del: Avspiller -->
+            <div class="detection-player">
+                <audio controls>
+                    <source src="{{ detection.audio_file }}" type="audio/mpeg">
+                    Nettleseren din støtter ikke lydavspilling.
+                </audio>
+            </div>
         </div>
     {% endfor %}
 </div>
