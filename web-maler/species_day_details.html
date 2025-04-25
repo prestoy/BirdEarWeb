@@ -4,31 +4,48 @@
 
 {% block content %}
 <h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
-<h2>{{ date | datetimeformat('%d. %b %Y') }}</h2>
+<p>Dato: {{ date }}</p>
 
-<a href="/showdetection?date={{ date }}" style="margin-top: 20px; display: inline-block;">&larr; Tilbake til registreringer</a>
+<!-- Lenke for å gå tilbake -->
+<a href="/showdetection?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a>
 
-<p>Totalt antall registreringer: {{ total_detections }}</p>
+<div>
+    {% for detection in detections %}
+        <div class="detection-row">
+            <p><strong>Tidspunkt:</strong> {{ detection.timestamp }}</p>
+            <p><strong>Chunk:</strong> {{ detection.chunk_index }}</p>
+            
+            <!-- Lydspiller -->
+            <audio controls>
+                <source src="{{ detection.audio_file }}" type="audio/mpeg">
+                Nettleseren din støtter ikke lydavspilling.
+            </audio>
+            
+            <!-- Markering av tidsrom -->
+            <p>
+                <strong>Markert tidsrom:</strong> 
+                Start: {{ detection.start_time }} sek, 
+                Slutt: {{ detection.end_time }} sek
+            </p>
+            <script>
+                // JavaScript for å markere tidsrommet i lydspilleren
+                const audio = document.getElementById('audio-{{ detection.chunk_index }}');
+                audio.addEventListener('loadedmetadata', () => {
+                    const start = {{ detection.start_time }};
+                    const end = {{ detection.end_time }};
+                    
+                    // Sett starttidspunkt
+                    audio.currentTime = start;
 
-<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-    <thead>
-        <tr>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Tidspunkt</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #ddd;">Lydklipp</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for detection in detections %}
-        <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ detection.timestamp | datetimeformat('%H:%M:%S') }}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">
-                <a href="/static/audio/chunk_{{ detection.chunk_index }}_0.mp3" target="_blank">
-                    chunk_{{ detection.chunk_index }}_0.mp3
-                </a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
+                    // Stopp avspillingen ved sluttidspunkt
+                    audio.addEventListener('timeupdate', () => {
+                        if (audio.currentTime > end) {
+                            audio.pause();
+                        }
+                    });
+                });
+            </script>
+        </div>
+    {% endfor %}
+</div>
 {% endblock %}

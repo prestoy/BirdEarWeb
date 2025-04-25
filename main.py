@@ -44,7 +44,11 @@ def datetimeformat(value, format='%d. %b %Y'):
 templates.env.filters['datetimeformat'] = datetimeformat
 
 # Mount statiske filer (for CSS, JS, etc.)
-#app.mount("static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount lydfiler fra audio-path i config.yaml
+#app.mount("/static/audio", StaticFiles(directory=config["audio-path"]), name="audio")
+app.mount("/audio", StaticFiles(directory=config["audio-path"]), name="audio")
 
 # Hjelpefunksjon: Les artsmapping fra CSV
 def load_species_mapping(csv_path):
@@ -163,14 +167,23 @@ async def species_day_details(request: Request, scientific_name: str, date: str)
     conn = sqlite3.connect(config["db-path"])
     cursor = conn.cursor()
     
-    # Hent registreringstidspunkter og chunk_index uten desimaler i sekund-delen
+    # Hent registreringstidspunkter og tidsrom for analysen
     cursor.execute('''
-        SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, chunk_index
+        SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
+                        chunk_index, 
+                        start_time, 
+                        end_time
         FROM detections
         WHERE DATE(timestamp) = ? AND scientific_name = ?
         ORDER BY formatted_timestamp
     ''', (date, scientific_name))
-    detections = [{"timestamp": row[0], "chunk_index": row[1]} for row in cursor.fetchall()]
+    detections = [{
+        "timestamp": row[0],
+        "chunk_index": row[1],
+        "audio_file": f"/audio/{row[1]}",  # Bruk URL-stien som matcher app.mount
+        "start_time": row[2],
+        "end_time": row[3]
+    } for row in cursor.fetchall()]
     conn.close()
 
     # Hent norsk navn for arten

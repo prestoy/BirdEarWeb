@@ -2,3 +2,5 @@
 db-path: "/mnt/e33nas_felles/birdmic/data/birdmic_detections.db"  
 # Sti til CSV-filen med norske artsnavn 
 species-map: "kilder/nnkf_komplett.20241111.csv" 
+# Sti til lydklippene
+audio-path: "/mnt/e33nas_felles/birdmic/audioarkiv"
