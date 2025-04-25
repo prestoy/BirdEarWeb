@@ -123,6 +123,12 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
     last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
     calendar = []
     current_day = first_day
+
+    # Juster for ukens første dag
+    start_weekday = first_day.weekday()  # 0 = mandag, 6 = søndag
+    if start_weekday > 0:
+        calendar.extend([None] * start_weekday)  # Fyll tomme celler før månedens første dag
+
     while current_day <= last_day:
         day_str = current_day.strftime("%Y-%m-%d")
         calendar.append({
@@ -131,6 +137,11 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
             "link": f"/show_detections?date={day_str}" if day_str in detection_days else None
         })
         current_day += timedelta(days=1)
+
+    # Fyll tomme celler etter månedens siste dag
+    end_weekday = last_day.weekday()  # 0 = mandag, 6 = søndag
+    if end_weekday < 6:
+        calendar.extend([None] * (6 - end_weekday))
 
     return templates.TemplateResponse("calendar.html", {
         "request": request,
