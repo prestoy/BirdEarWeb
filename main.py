@@ -80,13 +80,18 @@ species_mapping = load_species_mapping(config["species-map"])
 def get_detection_days(year, month):
     conn = sqlite3.connect(config["db-path"])
     cursor = conn.cursor()
+    
+    # Beregn start- og sluttdato for måneden
     start_date = f"{year}-{month:02d}-01"
-    end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=31)).strftime("%Y-%m-%d")
+    end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=31)).replace(day=1).strftime("%Y-%m-%d")
+    
+    # Hent unike datoer fra start_time i detections-tabellen
     cursor.execute('''
-        SELECT DISTINCT DATE(timestamp) as detection_date
+        SELECT DISTINCT DATE(start_time, 'unixepoch') as detection_date
         FROM detections
-        WHERE timestamp BETWEEN ? AND ?
+        WHERE DATE(start_time, 'unixepoch') BETWEEN ? AND ?
     ''', (start_date, end_date))
+    
     days = [row[0] for row in cursor.fetchall()]
     conn.close()
     return days
@@ -96,9 +101,9 @@ def get_detections_for_date(date, min_conf):
     conn = sqlite3.connect(config["db-path"])
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT scientific_name, strftime('%H', timestamp) as hour
+        SELECT scientific_name, strftime('%H', start_time, 'unixepoch') as hour
         FROM detections
-        WHERE DATE(timestamp) = ? AND confidence >= ?
+        WHERE DATE(start_time, 'unixepoch') = ? AND confidence >= ?
     ''', (date, min_conf))
     detections = [(row[0], int(row[1])) for row in cursor.fetchall()]  # Konverter 'hour' til int
     conn.close()
@@ -198,33 +203,50 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
     # Bygg SQL-spørring basert på om hour er angitt
     if hour is not None:
         cursor.execute('''
-            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
-                            chunk_index, 
+            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', start_time, 'unixepoch') as formatted_timestamp, 
+                            recording, 
                             start_time, 
                             end_time
             FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ?
+            WHERE DATE(start_time, 'unixepoch') = ? AND scientific_name = ? AND strftime('%H', start_time, 'unixepoch') = ?
             ORDER BY formatted_timestamp
         ''', (date, scientific_name, f"{hour:02d}"))
     else:
         cursor.execute('''
-            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', timestamp) as formatted_timestamp, 
-                            chunk_index, 
+            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', start_time, 'unixepoch') as formatted_timestamp, 
+                            recording, 
                             start_time, 
                             end_time
             FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ?
+            WHERE DATE(start_time, 'unixepoch') = ? AND scientific_name = ?
             ORDER BY formatted_timestamp
         ''', (date, scientific_name))
     
-    # Generer detections-listen
-    detections = [{
-        "timestamp": row[0],
-        "chunk_index": row[1],
-        "audio_file": f"/audio/{row[1]}",  # Korrekt URL-sti for lydfilen
-        "start_time": row[2],
-        "end_time": row[3]
-    } for row in cursor.fetchall()]
+    # Generer detections-listen med sjekk for lydfil
+    detections = []
+    for row in cursor.fetchall():
+        formatted_timestamp = row[0]
+        recording = row[1]
+        start_time = row[2]
+        end_time = row[3]
+
+        # Sjekk om lydfilen eksisterer
+        audio_file_path = os.path.join(config["audio-path"], recording) if recording else None
+        if audio_file_path and os.path.isfile(audio_file_path):
+            audio_file = f"/audio/{recording}"
+        else:
+            audio_file = None  # Sett til None hvis filen ikke finnes
+            recording = None  # Fjern verdien for recording hvis filen ikke finnes
+            start_time = None  # Sett start_time til None
+            end_time = None    # Sett end_time til None
+
+        detections.append({
+            "timestamp": formatted_timestamp,
+            "recording": recording,
+            "audio_file": audio_file,
+            "start_time": round(start_time - int(start_time), 1) if start_time else None,  # Rund av til én desimal
+            "end_time": round(end_time - int(start_time), 1) if start_time and end_time else None  # Rund av til én desimal
+        })
     conn.close()
 
     # Hent norsk navn for arten

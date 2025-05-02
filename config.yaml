@@ -1,5 +1,5 @@
 # Sti til SQLite-databasen
-db-path: "/mnt/e33nas_felles/birdmic/data/birdmic_detections.db"  
+db-path: "/mnt/e33nas_felles/birdmic/data/birdmic_detections.prod.db"  
 # Sti til CSV-filen med norske artsnavn 
 species-map: "kilder/nnkf_komplett.20241111.csv" 
 # Sti til lydklippene

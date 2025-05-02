@@ -15,15 +15,31 @@
             <!-- Venstre del: Metadata -->
             <div class="detection-metadata">
                 <p><strong>Tidspunkt:</strong> {{ detection.timestamp }}</p>
-                <p><strong>Markert tidsrom:</strong> Start: {{ detection.start_time }} sek, Slutt: {{ detection.end_time }} sek</p>
-                <p><strong>Lydfil:</strong> {{ detection.chunk_index }}</p>
+                <p><strong>Tidsrom:</strong> 
+                    {% if detection.start_time and detection.end_time %}
+                        Start: {{ detection.start_time }} sek, Slutt: {{ detection.end_time }} sek
+                    {% else %}
+                        Ikke tilgjengelig
+                    {% endif %}
+                </p>
+                <p><strong>Lydfil:</strong> 
+                    {% if detection.recording %}
+                        {{ detection.recording }}
+                    {% else %}
+                        Ikke tilgjengelig
+                    {% endif %}
+                </p>
             </div>
-            <!-- Høyre del: Avspiller -->
+            <!-- Høyre del: Avspiller eller melding -->
             <div class="detection-player">
-                <audio controls>
-                    <source src="{{ detection.audio_file }}" type="audio/mpeg">
-                    Nettleseren din støtter ikke lydavspilling.
-                </audio>
+                {% if detection.audio_file %}
+                    <audio controls>
+                        <source src="{{ detection.audio_file }}" type="audio/mpeg">
+                        Nettleseren din støtter ikke lydavspilling.
+                    </audio>
+                {% else %}
+                    <p><em>Opptak ikke tilgjengelig for denne deteksjonen.</em></p>
+                {% endif %}
             </div>
         </div>
     {% endfor %}
