@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
-<h2>Dato: {{ date }}</h2>
+<h2>Dato: {{ date | datetimeformat('%d. %B %Y') }}</h2>
 
 <!-- Lenke for å gå tilbake -->
 <p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a></p>
@@ -14,7 +14,7 @@
         <div class="detection-row">
             <!-- Venstre del: Metadata -->
             <div class="detection-metadata">
-                <p><strong>Tidspunkt:</strong> {{ detection.timestamp }}</p>
+                <p><strong>Tidspunkt:</strong> {{ detection.timestamp | datetimeformat('%d. %B %Y %H:%M:%S') }}</p>
                 <p><strong>Tidsrom:</strong> 
                     {% if detection.start_time and detection.end_time %}
                         Start: {{ detection.start_time }} sek, Slutt: {{ detection.end_time }} sek

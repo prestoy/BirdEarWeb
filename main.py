@@ -8,6 +8,10 @@ import sqlite3
 import csv
 from collections import defaultdict
 import os
+import locale
+
+# Sett norsk locale
+locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
 
 # Les config.yaml
 def load_config(config_path="config.yaml"):
@@ -22,23 +26,21 @@ app = FastAPI()
 templates = Jinja2Templates(directory="web-maler")
 
 # Legg til Jinja2-filter for datoformatering
-def datetimeformat(value, format='%d. %b %Y'):
+def datetimeformat(value, format='%d. %B %Y %H:%M:%S'):
     try:
         # Håndter ISO 8601-tidsstempler med mikrosekunder
         formatted_date = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f').strftime(format)
     except ValueError:
         try:
-            # Håndter tidsstempler uten mikrosekunder
-            formatted_date = datetime.strptime(value, '%Y-%m-%d %H:%M:%S').strftime(format)
+            # Håndter ISO 8601-tidsstempler uten mikrosekunder
+            formatted_date = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S').strftime(format)
         except ValueError:
-            # Håndter datoer uten tid
-            formatted_date = datetime.strptime(value, '%Y-%m-%d').strftime(format)
-    
-    # Konverter månedsnavn til små bokstaver hvis det finnes
-    parts = formatted_date.split()
-    if len(parts) > 1:  # Sjekk om det finnes et månedsnavn
-        formatted_date = formatted_date.replace(parts[1], parts[1].lower())
-    
+            try:
+                # Håndter tidsstempler uten 'T' (f.eks. 'YYYY-MM-DD HH:MM:SS')
+                formatted_date = datetime.strptime(value, '%Y-%m-%d %H:%M:%S').strftime(format)
+            except ValueError:
+                # Håndter datoer uten tid (f.eks. 'YYYY-MM-DD')
+                formatted_date = datetime.strptime(value, '%Y-%m-%d').strftime(format)
     return formatted_date
 
 templates.env.filters['datetimeformat'] = datetimeformat
@@ -76,38 +78,79 @@ def load_species_mapping(csv_path):
 
 species_mapping = load_species_mapping(config["species-map"])
 
+def get_db_connection():
+    """
+    Opprett en tilkobling til databasen i read-only-modus.
+    """
+    db_path = config["db-path"]
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    return conn
+
+
+def fetch_from_db(query, params=()):
+    """
+    Utfør en SQL-spørring og returner resultatene.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+
 # Hjelpefunksjon: Hent dager med detections for en gitt måned
 def get_detection_days(year, month):
-    conn = sqlite3.connect(config["db-path"])
-    cursor = conn.cursor()
-    
-    # Beregn start- og sluttdato for måneden
     start_date = f"{year}-{month:02d}-01"
     end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=31)).replace(day=1).strftime("%Y-%m-%d")
     
-    # Hent unike datoer fra start_time i detections-tabellen
-    cursor.execute('''
-        SELECT DISTINCT DATE(start_time, 'unixepoch') as detection_date
+    query = '''
+        SELECT DISTINCT DATE(timestamp) as detection_date
         FROM detections
-        WHERE DATE(start_time, 'unixepoch') BETWEEN ? AND ?
-    ''', (start_date, end_date))
-    
-    days = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return days
+        WHERE DATE(timestamp) BETWEEN ? AND ?
+    '''
+    results = fetch_from_db(query, (start_date, end_date))
+    return [row[0] for row in results]
+
 
 # Hjelpefunksjon: Hent detections for en gitt dato
 def get_detections_for_date(date, min_conf):
-    conn = sqlite3.connect(config["db-path"])
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT scientific_name, strftime('%H', start_time, 'unixepoch') as hour
+    query = '''
+        SELECT scientific_name, strftime('%H', timestamp) as hour
         FROM detections
-        WHERE DATE(start_time, 'unixepoch') = ? AND confidence >= ?
-    ''', (date, min_conf))
-    detections = [(row[0], int(row[1])) for row in cursor.fetchall()]  # Konverter 'hour' til int
-    conn.close()
-    return detections
+        WHERE DATE(timestamp) = ? AND confidence >= ?
+    '''
+    results = fetch_from_db(query, (date, min_conf))
+    return [(row[0], int(row[1])) for row in results]
+
+
+# Hjelpefunksjon: Hent detaljer for en art på en gitt dato
+def get_species_details(date, scientific_name, hour=None):
+    if hour is not None:
+        query = '''
+            SELECT DISTINCT timestamp as formatted_timestamp, 
+                            recording, 
+                            start_time, 
+                            end_time
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ?
+            ORDER BY formatted_timestamp
+        '''
+        params = (date, scientific_name, f"{hour:02d}")
+    else:
+        query = '''
+            SELECT DISTINCT timestamp as formatted_timestamp, 
+                            recording, 
+                            start_time, 
+                            end_time
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ?
+            ORDER BY formatted_timestamp
+        '''
+        params = (date, scientific_name)
+
+    return fetch_from_db(query, params)
+
 
 # "/" - Vis månedskalender
 @app.get("/", response_class=HTMLResponse)
@@ -160,7 +203,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
 
 # "/show_detections" - Vis arter for en gitt dato
 @app.get("/show_detections", response_class=HTMLResponse)
-async def show_detections(request: Request, date: str, min_conf: float = 0.5):
+async def show_detections(request: Request, date: str, min_conf: float = 0.8):
     detections = get_detections_for_date(date, min_conf)
 
     # Organiser detections etter art og time
@@ -183,7 +226,7 @@ async def show_detections(request: Request, date: str, min_conf: float = 0.5):
     # Sorter etter totalt antall registreringer i synkende rekkefølge
     species_data.sort(key=lambda x: x["total_count"], reverse=True)
 
-    return templates.TemplateResponse("detections.html", {
+    return templates.TemplateResponse("show_detections.html", {
         "request": request,
         "date": date,
         "species_data": species_data,
@@ -197,34 +240,12 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
     # Konverter understrek til mellomrom
     scientific_name = scientific_name.replace("_", " ")
 
-    conn = sqlite3.connect(config["db-path"])
-    cursor = conn.cursor()
-    
-    # Bygg SQL-spørring basert på om hour er angitt
-    if hour is not None:
-        cursor.execute('''
-            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', start_time, 'unixepoch') as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time
-            FROM detections
-            WHERE DATE(start_time, 'unixepoch') = ? AND scientific_name = ? AND strftime('%H', start_time, 'unixepoch') = ?
-            ORDER BY formatted_timestamp
-        ''', (date, scientific_name, f"{hour:02d}"))
-    else:
-        cursor.execute('''
-            SELECT DISTINCT strftime('%Y-%m-%d %H:%M:%S', start_time, 'unixepoch') as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time
-            FROM detections
-            WHERE DATE(start_time, 'unixepoch') = ? AND scientific_name = ?
-            ORDER BY formatted_timestamp
-        ''', (date, scientific_name))
-    
+    # Hent data fra databasen
+    rows = get_species_details(date, scientific_name, hour)
+
     # Generer detections-listen med sjekk for lydfil
     detections = []
-    for row in cursor.fetchall():
+    for row in rows:
         formatted_timestamp = row[0]
         recording = row[1]
         start_time = row[2]
@@ -235,19 +256,24 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
         if audio_file_path and os.path.isfile(audio_file_path):
             audio_file = f"/audio/{recording}"
         else:
-            audio_file = None  # Sett til None hvis filen ikke finnes
-            recording = None  # Fjern verdien for recording hvis filen ikke finnes
-            start_time = None  # Sett start_time til None
-            end_time = None    # Sett end_time til None
+            audio_file = None
+            recording = None
+
+        # Legg til tidsrom kun hvis start_time og end_time er tilgjengelige
+        if start_time is not None and end_time is not None:
+            start_time_display = round(start_time, 1)
+            end_time_display = round(end_time, 1)
+        else:
+            start_time_display = None
+            end_time_display = None
 
         detections.append({
             "timestamp": formatted_timestamp,
             "recording": recording,
             "audio_file": audio_file,
-            "start_time": round(start_time - int(start_time), 1) if start_time else None,  # Rund av til én desimal
-            "end_time": round(end_time - int(start_time), 1) if start_time and end_time else None  # Rund av til én desimal
+            "start_time": start_time_display,
+            "end_time": end_time_display
         })
-    conn.close()
 
     # Hent norsk navn for arten
     common_name = species_mapping.get(scientific_name, "Ukjent")

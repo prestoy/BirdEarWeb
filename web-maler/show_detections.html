@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }}{% endblock %}
+{% block title %}Deteksjoner for {{ date | datetimeformat('%d. %B %Y') }}{% endblock %}
 
 {% block content %}
-<h1>Deteksjoner for {{ date }}</h1>
+<h1>Deteksjoner for {{ date | datetimeformat('%d. %B %Y') }}</h1>
 
 <!-- Lenke for å gå tilbake til "/" -->
 <a href="/" class="back-link" style="display: inline-block; margin-bottom: 20px;">&larr; Tilbake til kalender</a>
