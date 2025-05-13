@@ -1,14 +1,19 @@
 import yaml  # For å lese config.yaml
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Depends, HTTPException, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from hashlib import sha256
 from datetime import datetime, timedelta
 import sqlite3
 import csv
 from collections import defaultdict
 import os
 import locale
+import time
+from bcrypt import checkpw
 
 # Sett norsk locale
 locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
@@ -86,6 +91,13 @@ def get_db_connection():
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     return conn
 
+def get_db_connection_rw():
+    """
+    Opprett en tilkobling til databasen i read-write-modus.
+    """
+    db_path = config["db-path"]
+    conn = sqlite3.connect(db_path)  # Fjern "mode=ro" for å tillate skriving
+    return conn
 
 def fetch_from_db(query, params=()):
     """
@@ -98,6 +110,15 @@ def fetch_from_db(query, params=()):
     conn.close()
     return results
 
+def execute_db(query, params=()):
+    """
+    Utfør en SQL-spørring som krever skrivetilgang.
+    """
+    conn = get_db_connection_rw()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    conn.commit()  # Husk å lagre endringene
+    conn.close()
 
 # Hjelpefunksjon: Hent dager med detections for en gitt måned
 def get_detection_days(year, month):
@@ -288,3 +309,149 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
         "total_detections": len(detections),
         "title": f"Detaljer for {common_name} ({scientific_name})"
     })
+
+# Funksjon for å generere JWT-token
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
+    return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
+
+# Funksjon for å verifisere JWT-token
+def verify_token(token: str):
+    try:
+        payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
+
+# Funksjon for å verifisere passord med bcrypt
+def verify_password(password: str):
+    with open(config["password_hash_file"], "r") as file:
+        stored_hash = file.read().strip().encode("utf-8")  # Les hashen og konverter til bytes
+    return checkpw(password.encode("utf-8"), stored_hash)  # Sammenlign passordet med hashen
+
+# Rute for "/species_detections_admin"
+@app.get("/species_detections_admin", response_class=HTMLResponse)
+async def species_detections_admin(
+    request: Request,
+    scientific_name: str,
+    date: str,
+    token: str = None  # Token hentes manuelt fra cookies
+):
+    # Sjekk om token er gyldig
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token or not verify_token(token):
+# Hvis token mangler eller er ugyldig, vis passord-dialogen
+        return templates.TemplateResponse("password_prompt.html", {"request": request, "scientific_name": scientific_name, "date": date})
+
+    # Hent data fra databasen
+    query = '''
+        SELECT timestamp, recording, start_time, end_time, confidence
+        FROM detections
+        WHERE DATE(timestamp) = ? AND scientific_name = ?
+        ORDER BY timestamp ASC, start_time ASC
+    '''
+    rows = fetch_from_db(query, (date, scientific_name.replace("_", " ")))
+
+    # Konverter rader til en liste med ordbøker
+    detections = [
+        {
+            "timestamp": row[0],
+            "recording": row[1],
+            "start_time": row[2],
+            "end_time": row[3],
+            "confidence": row[4],
+        }
+        for row in rows
+    ]
+
+    return templates.TemplateResponse("species_detections_admin.html", {
+        "request": request,
+        "scientific_name": species_mapping.get(scientific_name.replace("_", " ")),
+        "date": date,
+        "detections": detections,
+        "title": f"Administrer deteksjoner for {species_mapping.get(scientific_name.replace("_", " "))} {date}"
+    })
+
+
+@app.post("/archive_false_positives")
+async def archive_false_positives(
+    request: Request,
+    scientific_name: str = Form(...),
+    date: str = Form(...),
+    false_positive_ids: list[str] = Form(...)
+):
+    # Hent token fra cookies
+    token = request.cookies.get("access_token")
+    if not token or not verify_token(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Flytt merkede deteksjoner til false_positives-tabellen
+    query_insert = '''
+        INSERT INTO false_positives (timestamp, recording, start_time, end_time, confidence, scientific_name)
+        SELECT timestamp, recording, start_time, end_time, confidence, scientific_name
+        FROM detections
+        WHERE timestamp = ? AND scientific_name = ?
+    '''
+    query_delete = '''
+        DELETE FROM detections
+        WHERE timestamp = ? AND scientific_name = ?
+    '''
+    for detection_id in false_positive_ids:
+        execute_db(query_insert, (detection_id, scientific_name))
+        execute_db(query_delete, (detection_id, scientific_name))
+
+    return RedirectResponse(url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}", status_code=303)
+
+# Rute for passordautentisering
+@app.post("/authenticate")
+async def authenticate(
+    password: str = Form(...),
+    scientific_name: str = Form(...),
+    date: str = Form(...)
+):
+    if verify_password(password):
+        token = create_access_token({"sub": "admin"})
+        response = RedirectResponse(
+            url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
+            status_code=303
+        )
+        response.set_cookie(
+            key="access_token",
+            value=token,
+            httponly=True,
+            max_age=config["access_token_expire_seconds"]
+        )
+        return response
+    else:
+        raise HTTPException(status_code=401, detail="Feil passord")
+
+@app.post("/delete_all_detections")
+async def delete_all_detections(
+    request: Request,
+    scientific_name: str = Form(...),
+    date: str = Form(...)
+):
+    # Hent token fra cookies
+    token = request.cookies.get("access_token")
+    if not token or not verify_token(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Slett alle deteksjoner for arten på den angitte datoen
+    query = '''
+        DELETE FROM detections
+        WHERE scientific_name = ? AND DATE(timestamp) = ?
+    '''
+    execute_db(query, (scientific_name, date))
+    return RedirectResponse(url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}", status_code=303)
+
+@app.post("/delete_detection")
+async def delete_detection(timestamp: str = Form(...), token: str = Depends(OAuth2PasswordBearer(tokenUrl="token"))):
+    verify_token(token)
+    query = '''
+        DELETE FROM detections
+        WHERE timestamp = ?
+    '''
+    fetch_from_db(query, (timestamp,))
+    return RedirectResponse(url=f"/species_detections_admin", status_code=303)

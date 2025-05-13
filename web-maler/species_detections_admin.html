@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<h1>Administrer deteksjoner for {{ scientific_name }} {{ date | datetimeformat('%d. %B %Y') }}</h1>
+
+<!-- Buttons for å merke og arkivere falske positiver -->
+<form method="post" action="/archive_false_positives">
+    <div style="text-align: right; margin-bottom: 10px;">
+        <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
+        <input type="hidden" name="date" value="{{ date }}">
+        <button type="submit">Arkiver merkede som falske positiver</button>
+        <button type="button" id="select-all">Merk alle som falske positiver</button>
+    </div>
+    <!-- Liste over deteksjoner -->
+    <div class="detections-list">
+        {% for detection in detections %}
+        <div class="detection-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <p style="margin: 0;"><strong>Lydfil:</strong> {{ detection.recording }}</p>
+                <audio controls style="margin-left: 10px;">
+                    <source src="/audio/{{ detection.recording }}" type="audio/mpeg">
+                    Nettleseren din støtter ikke lydavspilling.
+                </audio>
+                <div style="margin-top: 10px; text-align: right;">
+                    <label>
+                        <input type="checkbox" name="false_positive_ids" value="{{ detection.timestamp }}">
+                        Merk som falsk positiv
+                    </label>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                <span><strong>Start:</strong> {{ detection.start_time }} sek</span>
+                <span><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
+                <span><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
+                <span><!--empty--></span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</form>
+
+<script>
+    // JavaScript for å merke alle deteksjoner som falske positiver
+    document.getElementById("select-all").addEventListener("click", function() {
+        const checkboxes = document.querySelectorAll("input[name='false_positive_ids']");
+        const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+
+        // Hvis alle er merket, fjern merkingen; ellers merk alle
+        checkboxes.forEach(function(checkbox) {
+            checkbox.checked = !allChecked;
+        });
+    });
+</script>
+{% endblock %}
