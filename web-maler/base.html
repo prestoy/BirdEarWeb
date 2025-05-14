@@ -205,6 +205,67 @@
             font-size: 1.5em;
             font-weight: bold;
         }
+
+        /* Generell styling for knapper */
+        button {
+            padding: 8px 15px;
+            font-size: 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button[type="submit"] {
+            background-color: #007bff;
+            color: white;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+
+        button#select-all {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        button#select-all:hover {
+            background-color: #5a6268;
+        }
+
+        /* Stil for deaktivert knapp */
+        button:disabled {
+            background-color: #d6d6d6; /* Utgrået bakgrunnsfarge */
+            color: #a1a1a1; /* Lysere tekstfarge */
+            cursor: not-allowed; /* Forbudt musepeker */
+            opacity: 0.7; /* Gjør knappen litt gjennomsiktig */
+        }
+
+        /* Hover-effekt for aktiv knapp */
+        button:not(:disabled):hover {
+            background-color: #0056b3; /* Mørkere blå farge ved hover */
+        }
+
+        /* Responsiv layout for skjema */
+        @media (max-width: 768px) {
+            .detections-list {
+                flex-direction: column;
+            }
+
+            .detections-list div {
+                margin-bottom: 15px;
+            }
+
+            div[style*="justify-content: space-between"] {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            div[style*="justify-content: space-between"] > div {
+                margin-bottom: 10px;
+            }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>

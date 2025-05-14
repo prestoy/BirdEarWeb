@@ -11,64 +11,83 @@
 </div>
 
 <!-- Form for å filtrere etter konfidens og knapper -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <form method="get" action="/species_detections_admin" style="display: flex; align-items: center; gap: 10px;">
-        <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
-        <input type="hidden" name="date" value="{{ date }}">
-        <label for="confidence-filter">Filtrer etter konfidens:</label>
-        <select id="confidence-filter" name="min_conf" onchange="this.form.submit()">
-            {% for i in range(0, 11) %}
-                <option value="{{ i / 10 }}" {% if i / 10 == min_conf %}selected{% endif %}>
-                    {{ i / 10 }}
-                </option>
-            {% endfor %}
-        </select>
-    </form>
-    <form method="post" action="/archive_false_positives" style="display: flex; align-items: center; gap: 10px;">
-        <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
-        <input type="hidden" name="date" value="{{ date }}">
-        <button type="submit">Arkiver merkede som falske positiver</button>
-        <button type="button" id="select-all">Merk alle som falske positiver</button>
-    </form>
-</div>
-
-<!-- Liste over deteksjoner -->
-<div class="detections-list">
-    {% for detection in detections %}
-    <div class="detection-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <p style="margin: 0;"><strong>Lydfil:</strong> {{ detection.recording }}</p>
-            <audio controls style="margin-left: 10px;">
-                <source src="/audio/{{ detection.recording }}" type="audio/mpeg">
-                Nettleseren din støtter ikke lydavspilling.
-            </audio>
-            <div style="margin-top: 10px; text-align: right;">
-                <label>
-                    <input type="checkbox" name="false_positive_ids" value="{{ detection.timestamp }}">
-                    Merk som falsk positiv
-                </label>
+<div style="display: flex; align-items: center; margin-bottom: 10px; width: 100%;">
+    <form method="post" action="/archive_false_positives" style="display: flex; flex-direction: column; gap: 10px; width: 100%; margin-right: 20px;">
+        <div style="display: flex; flex-direction: column; margin-bottom: 20px; width: 100%;">
+            <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
+            <input type="hidden" name="date" value="{{ date }}">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="flex: 1; text-align: left;">
+                    <label for="min_conf" style="font-weight: bold;">Øvre konfidens-grense:</label>
+                    <input type="number" step="0.1" min="0" max="1" id="min_conf" name="min_conf" value="{{ min_conf }}" style="width: 80px; padding: 5px; margin-left: 10px;">
+                </div>
+                <div style="flex: 1; text-align: right;">
+                    <button type="submit" id="archive-button" disabled>Arkiver merkede som falske positiver</button>
+                    <button type="button" id="select-all">Merk alle som falske positiver</button>
+                </div>
             </div>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-            <span><strong>Start:</strong> {{ detection.start_time }} sek</span>
-            <span><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
-            <span><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
-            <span><!-- empty --></span>
+
+        <!-- Liste over deteksjoner -->
+        <div class="detections-list" style="width: 100%; padding-right: 20px;">
+            {% for detection in detections %}
+            <div class="detection-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; width: 100%;">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <p style="margin: 0;"><strong>Lydfil:</strong> {{ detection.recording }}</p>
+                    <audio controls style="margin-left: 10px;">
+                        <source src="/audio/{{ detection.recording }}" type="audio/mpeg">
+                        Nettleseren din støtter ikke lydavspilling.
+                    </audio>
+                    <div style="margin-top: 10px; text-align: right;">
+                        <label>
+                            <input type="checkbox" name="false_positive_ids" value="{{ detection.timestamp }}" class="checkbox">
+                            Merk som falsk positiv
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; width: 100%;">
+                    <span><strong>Start:</strong> {{ detection.start_time }} sek</span>
+                    <span><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
+                    <span><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
+                    <span><!-- empty --></span>
+                </div>
+            </div>
+            {% endfor %}
         </div>
-    </div>
-    {% endfor %}
+    </form>
 </div>
 
 <script>
-    // JavaScript for å merke alle deteksjoner som falske positiver
-    document.getElementById("select-all").addEventListener("click", function() {
-        const checkboxes = document.querySelectorAll("input[name='false_positive_ids']");
+    // Hent referanser til knappen og sjekkboksene
+    const archiveButton = document.getElementById("archive-button");
+    const checkboxes = document.querySelectorAll("input[name='false_positive_ids']");
+    const selectAllButton = document.getElementById("select-all");
+
+    // Funksjon for å oppdatere knappens status
+    function updateButtonState() {
+        const anyChecked = Array.from(checkboxes).some(checkbox => checkbox.checked);
+        archiveButton.disabled = !anyChecked; // Deaktiver hvis ingen er merket
+    }
+
+    // Legg til event listeners på alle sjekkboksene
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener("change", updateButtonState);
+    });
+
+    // Legg til funksjonalitet for "Merk alle som falske positiver"-knappen
+    selectAllButton.addEventListener("click", function() {
         const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
 
         // Hvis alle er merket, fjern merkingen; ellers merk alle
-        checkboxes.forEach(function(checkbox) {
+        checkboxes.forEach(checkbox => {
             checkbox.checked = !allChecked;
         });
+
+        // Oppdater knappens status
+        updateButtonState();
     });
+
+    // Oppdater knappens status ved lasting av siden
+    updateButtonState();
 </script>
 {% endblock %}

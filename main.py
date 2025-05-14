@@ -1,6 +1,6 @@
 import yaml  # For å lese config.yaml
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse  # Legg til denne importen
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer
@@ -14,6 +14,7 @@ import os
 import locale
 import time
 from bcrypt import checkpw
+from typing import Optional
 
 # Sett norsk locale
 locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
@@ -416,6 +417,75 @@ async def species_detections_admin(
         "detections": detections,
         "title": f"Administrer deteksjoner for {scientific_name} {date}"
     })
+
+@app.post("/archive_false_positives", response_class=HTMLResponse)
+async def archive_false_positives(
+    request: Request,
+    scientific_name: str = Form(...),
+    date: str = Form(...),
+    false_positive_ids: Optional[list[str]] = Form(None)  # Gjør feltet valgfritt
+):
+    # Hvis ingen deteksjoner er merket, sett false_positive_ids til en tom liste
+    if not false_positive_ids:
+        false_positive_ids = []
+
+    # Sjekk om brukeren er autentisert
+    token = request.cookies.get("access_token")
+    if not token or not verify_token(token):
+        return templates.TemplateResponse("password_prompt.html", {
+            "request": request,
+            "scientific_name": scientific_name,
+            "date": date
+        })
+
+    # Antall merkede deteksjoner
+    num_selected = len(false_positive_ids)
+
+    # Hent totalt antall deteksjoner for arten på den angitte datoen
+    query_total = '''
+        SELECT COUNT(*)
+        FROM detections
+        WHERE DATE(timestamp) = ? AND scientific_name = ?
+    '''
+    total_detections = fetch_from_db(query_total, (date, scientific_name.replace("_", " ")))[0][0]
+
+    # Bekreftelsesdialog
+    if "confirm" not in request.query_params:
+        return templates.TemplateResponse("confirmation_prompt.html", {
+            "request": request,
+            "scientific_name": scientific_name,
+            "date": date,
+            "num_selected": num_selected,
+            "total_detections": total_detections,
+            "false_positive_ids": false_positive_ids
+        })
+
+    # Hvis brukeren bekrefter, flytt dataene
+    if request.query_params.get("confirm") == "true":
+        with sqlite3.connect(config["db-path"]) as conn:
+            cursor = conn.cursor()
+
+            # Flytt merkede deteksjoner til false_positives
+            cursor.executemany('''
+                INSERT INTO false_positives (id, location_id, timestamp, recording, start_time, end_time, confidence, scientific_name)
+                SELECT id, location_id, timestamp, recording, start_time, end_time, confidence, scientific_name
+                FROM detections
+                WHERE timestamp = ? AND scientific_name = ?
+            ''', [(fp_id, scientific_name) for fp_id in false_positive_ids])
+
+            # Slett merkede deteksjoner fra detections
+            cursor.executemany('''
+                DELETE FROM detections
+                WHERE timestamp = ? AND scientific_name = ?
+            ''', [(fp_id, scientific_name) for fp_id in false_positive_ids])
+
+            conn.commit()
+
+    # Oppfrisk siden med samme parametre
+    return RedirectResponse(
+        url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
+        status_code=303
+    )
 
 @app.post("/archive_false_positives")
 async def archive_false_positives(
