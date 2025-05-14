@@ -6,8 +6,11 @@
 <h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
 <h2>Deteksjoner {{ date | datetimeformat('%d. %B %Y') }} med konfidens {{ min_conf }} eller høyere</h2>
 
-<!-- Lenke for å gå tilbake -->
-<p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a></p>
+<!-- Lenker for navigasjon -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Deteksjoner på dato</a></p>
+    <p><a href="/species_detections_admin?scientific_name={{ scientific_name }}&date={{ date }}" class="admin-link">Administrer deteksjoner &rarr;</a></p>
+</div>
 
 <div>
     {% for detection in detections %}

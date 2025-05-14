@@ -370,23 +370,26 @@ async def species_detections_admin(
     request: Request,
     scientific_name: str,
     date: str,
-    token: str = None  # Token hentes manuelt fra cookies
+    min_conf: float = 1.0  # Standardverdi for confidence-nivå
 ):
-    # Sjekk om token er gyldig
-    if not token:
-        token = request.cookies.get("access_token")
+    # Sjekk om brukeren er autentisert
+    token = request.cookies.get("access_token")
     if not token or not verify_token(token):
-# Hvis token mangler eller er ugyldig, vis passord-dialogen
-        return templates.TemplateResponse("password_prompt.html", {"request": request, "scientific_name": scientific_name, "date": date})
+        # Hvis brukeren ikke er autentisert, vis passordskjema
+        return templates.TemplateResponse("password_prompt.html", {
+            "request": request,
+            "scientific_name": scientific_name,
+            "date": date
+        })
 
     # Hent data fra databasen
     query = '''
         SELECT timestamp, recording, start_time, end_time, confidence
         FROM detections
-        WHERE DATE(timestamp) = ? AND scientific_name = ?
+        WHERE DATE(timestamp) = ? AND scientific_name = ? AND confidence <= ?
         ORDER BY timestamp ASC, start_time ASC
     '''
-    rows = fetch_from_db(query, (date, scientific_name.replace("_", " ")))
+    rows = fetch_from_db(query, (date, scientific_name.replace("_", " "), min_conf))
 
     # Konverter rader til en liste med ordbøker
     detections = [
@@ -400,14 +403,19 @@ async def species_detections_admin(
         for row in rows
     ]
 
+
+    # Hent norsk navn for arten
+    common_name = species_mapping.get(scientific_name, "Ukjent")
+
     return templates.TemplateResponse("species_detections_admin.html", {
         "request": request,
-        "scientific_name": species_mapping.get(scientific_name.replace("_", " ")),
+        "scientific_name": scientific_name,
+        "common_name": common_name,
         "date": date,
+        "min_conf": min_conf,
         "detections": detections,
-        "title": f"Administrer deteksjoner for {species_mapping.get(scientific_name.replace("_", " "))} {date}"
+        "title": f"Administrer deteksjoner for {scientific_name} {date}"
     })
-
 
 @app.post("/archive_false_positives")
 async def archive_false_positives(
