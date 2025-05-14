@@ -21,7 +21,7 @@
         <div class="detection-row" style="margin-bottom: 30px;">
             <!-- Navneområde -->
             <div class="names" style="margin-bottom: 10px;">
-                <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}" class="species-link">
+                <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&min_conf={{ min_conf }}" class="species-link">
                     <strong>{{ species.common_name | capitalize }}</strong>
                 </a><br/>
                 <em>({{ species.scientific_name }})</em>
@@ -34,7 +34,7 @@
                             <span class="bar-label">{{ count }}</span>
                         {% endif %}
                         <div class="bar" style="height: {{ (count / (species.histogram | max) * 100) if species.histogram | max > 0 else 0 }}%;">
-                            <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&hour={{ loop.index0 }}" style="display: block; width: 100%; height: 100%;"></a>
+                            <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&hour={{ loop.index0 }}&min_conf={{ min_conf }}" style="width: 100%; height: 100%;"></a>
                         </div>
                         <span class="hour-label">{{ loop.index0 }}</span>
                     </div>

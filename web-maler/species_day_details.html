@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Detaljer for {{ common_name }} ({{ scientific_name }})</h1>
-<h2>Dato: {{ date | datetimeformat('%d. %B %Y') }}</h2>
+<h2>Deteksjoner {{ date | datetimeformat('%d. %B %Y') }} med konfidens {{ min_conf }} eller høyere</h2>
 
 <!-- Lenke for å gå tilbake -->
 <p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Tilbake til registreringer</a></p>
@@ -29,6 +29,7 @@
                         Ikke tilgjengelig
                     {% endif %}
                 </p>
+                <p><strong>Konfidens:</strong> {{ detection.confidence }}</p>
             </div>
             <!-- Høyre del: Avspiller eller melding -->
             <div class="detection-player">

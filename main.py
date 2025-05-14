@@ -257,12 +257,43 @@ async def show_detections(request: Request, date: str, min_conf: float = 0.8):
 
 # "/species_details" - Vis registreringstidspunkter for en art på en gitt dato, med valgfri timefilter
 @app.get("/species_details", response_class=HTMLResponse)
-async def species_details(request: Request, scientific_name: str, date: str, hour: int = None):
+async def species_details(
+    request: Request,
+    scientific_name: str,
+    date: str,
+    hour: int = None,
+    min_conf: float = 0.0  # Standardverdi for confidence-nivå
+):
     # Konverter understrek til mellomrom
     scientific_name = scientific_name.replace("_", " ")
 
     # Hent data fra databasen
-    rows = get_species_details(date, scientific_name, hour)
+    if hour is not None:
+        query = '''
+            SELECT DISTINCT timestamp as formatted_timestamp, 
+                            recording, 
+                            start_time, 
+                            end_time, 
+                            confidence
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ? AND confidence >= ?
+            ORDER BY formatted_timestamp
+        '''
+        params = (date, scientific_name, f"{hour:02d}", min_conf)
+    else:
+        query = '''
+            SELECT DISTINCT timestamp as formatted_timestamp, 
+                            recording, 
+                            start_time, 
+                            end_time, 
+                            confidence
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ? AND confidence >= ?
+            ORDER BY formatted_timestamp
+        '''
+        params = (date, scientific_name, min_conf)
+
+    rows = fetch_from_db(query, params)
 
     # Generer detections-listen med sjekk for lydfil
     detections = []
@@ -271,6 +302,7 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
         recording = row[1]
         start_time = row[2]
         end_time = row[3]
+        confidence = row[4]
 
         # Sjekk om lydfilen eksisterer
         audio_file_path = os.path.join(config["audio-path"], recording) if recording else None
@@ -293,7 +325,8 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
             "recording": recording,
             "audio_file": audio_file,
             "start_time": start_time_display,
-            "end_time": end_time_display
+            "end_time": end_time_display,
+            "confidence": round(confidence, 2)
         })
 
     # Hent norsk navn for arten
@@ -305,6 +338,7 @@ async def species_details(request: Request, scientific_name: str, date: str, hou
         "common_name": common_name,
         "date": date,
         "hour": hour,
+        "min_conf": min_conf,
         "detections": detections,
         "total_detections": len(detections),
         "title": f"Detaljer for {common_name} ({scientific_name})"
