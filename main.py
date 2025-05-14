@@ -449,11 +449,15 @@ async def archive_false_positives(
     '''
     total_detections = fetch_from_db(query_total, (date, scientific_name.replace("_", " ")))[0][0]
 
+    # Hent norsk navn for arten
+    common_name = species_mapping.get(scientific_name, "Ukjent")
+
     # Bekreftelsesdialog
     if "confirm" not in request.query_params:
         return templates.TemplateResponse("confirmation_prompt.html", {
             "request": request,
             "scientific_name": scientific_name,
+            "common_name": common_name,
             "date": date,
             "num_selected": num_selected,
             "total_detections": total_detections,

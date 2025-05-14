@@ -4,7 +4,9 @@
 
 {% block content %}
 <h1>Bekreftelse</h1>
-<p>Du har angitt at {{ num_selected }} av {{ total_detections }} deteksjoner er falske positiver og ikke skal vises som deteksjoner lenger. Stemmer det?</p>
+<p>
+    Du har angitt at {{ num_selected }} av {{ total_detections }} deteksjoner av <strong>{{ common_name }}</strong> <em>{{ scientific_name }}</em> den {{ date | datetimeformat('%-d. %B %Y') }} er falske positiver og ikke skal vises som deteksjoner lenger. Stemmer det?
+</p>
 
 <div style="display: flex; justify-content: space-between; margin-top: 20px;">
     <form method="post" action="/archive_false_positives?confirm=true">
@@ -13,12 +15,12 @@
         {% for fp_id in false_positive_ids %}
             <input type="hidden" name="false_positive_ids" value="{{ fp_id }}">
         {% endfor %}
-        <button type="submit">Bekreft</button>
+        <button type="submit" style="background-color: green; color: white;">Bekreft</button>
     </form>
     <form method="get" action="/species_detections_admin">
         <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
         <input type="hidden" name="date" value="{{ date }}">
-        <button type="submit" style="background-color: red; color: white;">Angre</button>
+        <button type="submit" style="background-color: red; color: white;">Avbryt</button>
     </form>
 </div>
 {% endblock %}
