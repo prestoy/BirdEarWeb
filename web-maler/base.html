@@ -10,17 +10,16 @@
             margin: 0;
             padding: 0;
             background-color: #f4f4f4;
-            min-width: 850px; /* Sett minimum bredde for hele siden */
         }
         .container {
-            width: 100%;
-            max-width: 1000px;
+            width: 90%; /* Bruk 90% av skjermbredden */
+            max-width: 1000px; /* Maks bredde for store skjermer */
+            overflow-x: auto; /* Legg til rullefelt hvis innholdet er for bredt */
             margin: 20px auto;
             background: white;
             padding: 20px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             border-radius: 8px;
-            min-width: 850px; /* Sett minimum bredde for container */
         }
         a {
             text-decoration: none;
@@ -28,92 +27,6 @@
         }
         a:hover {
             text-decoration: underline;
-        }
-        .detection-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 8px;
-            background-color: #f9f9f9;
-        }
-        .names {
-            flex: 1;
-            min-width: 150px;
-            padding-right: 20px;
-        }
-        .names strong {
-            font-weight: bold;
-            font-size: 22px;
-        }
-        .names em {
-            font-style: italic;
-            font-size: 22px;
-            color: #555;
-        }
-        .histogram {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            height: 100px; /* Histogrammets høyde */
-            border-left: 1px solid #ddd;
-            border-bottom: 1px solid #ddd;
-            padding: 10px;
-            margin-top: 20px;
-            min-width: 800px; /* Sørg for at histogrammet ikke blir for smalt */
-        }
-        .bar-container {
-            flex: 1;
-            text-align: center;
-            margin: 0 2px;
-            height: 100%; /* Sørg for at bar-container fyller hele høyden til histogram */
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end; /* Plasser stolpen nederst */
-        }
-        .bar {
-            width: 15px;
-            background-color: #d1e7ff;
-            transition: background-color 0.3s ease;
-            position: relative; /* Gjør det mulig å plassere <a> inni */
-            margin-left: auto; /* Sentrer stolpen horisontalt */
-            margin-right: auto; /* Sentrer stolpen horisontalt */
-        }
-        .bar a {
-            display: block;
-            width: 100%;
-            height: 100%; /* Sørg for at <a> fyller hele høyden til .bar */
-            position: absolute;
-            top: 0;
-            left: 0;
-            text-decoration: none; /* Fjern standard lenkestil */
-        }
-        .bar:hover {
-            background-color: #007bff;
-        }
-        .bar-label {
-            font-size: 0.7em;
-            margin-bottom: 5px;
-            display: block;
-            transform: rotate(-90deg); /* Roter teksten 90 grader mot klokken */
-            transform-origin: center; /* Roter rundt midten av teksten */
-            white-space: nowrap; /* Sørg for at teksten ikke brytes */
-        }
-        .hour-label {
-            font-size: 0.7em;
-            margin-top: 5px;
-            display: block;
-        }
-        .species-link {
-            text-decoration: none;
-            color: inherit; /* Bruker normal tekstfarge */
-        }
-
-        .species-link:hover {
-            color: #007bff; /* Standard lenkefarge ved hover */
-            text-decoration: underline; /* Understreker ved hover */
         }
 
         /* Stil for registreringsrader */
@@ -264,6 +177,99 @@
 
             div[style*="justify-content: space-between"] > div {
                 margin-bottom: 10px;
+            }
+        }
+
+        /* Responsiv design for små skjermer */
+        @media (max-width: 768px) {
+            .container {
+                width: 95%; /* Øk bredden til 95% for små skjermer */
+                padding: 15px; /* Reduser padding */
+            }
+
+            h1, h2 {
+                font-size: 1.2em; /* Reduser fontstørrelsen for overskrifter */
+            }
+
+            .detection-row {
+                flex-direction: column; /* Legg elementene oppå hverandre */
+            }
+
+            .detection-metadata,
+            .detection-player {
+                margin-right: 0; /* Fjern margin mellom elementene */
+                margin-bottom: 10px; /* Legg til margin under hvert element */
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1, h2 {
+                font-size: 1em; /* Ytterligere reduksjon i fontstørrelse */
+            }
+
+            .container {
+                padding: 10px; /* Reduser padding ytterligere */
+            }
+
+            .detection-row {
+                padding: 10px; /* Reduser padding for deteksjonsrader */
+            }
+        }
+
+        /* Standard layout for bredere skjermer */
+        .detection-item {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+            width: 100%;
+        }
+
+        .detection-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .detection-details .start-end {
+            flex: 1;
+            text-align: left;
+        }
+
+        .detection-details .confidence {
+            flex: 1;
+            text-align: left;
+        }
+
+        /* Responsiv design for smale skjermer */
+        @media (max-width: 768px) {
+            .detection-item {
+                align-items: center; /* Sentrer alt innhold horisontalt */
+            }
+
+            .detection-details {
+                flex-wrap: wrap; /* Tillat innhold å bryte til flere linjer */
+                justify-content: center; /* Sentrer innholdet */
+                text-align: center; /* Sentrer teksten */
+            }
+
+            .detection-details .start-end {
+                flex: 0 0 50%; /* Start og Slutt tar 50% av bredden */
+                margin-bottom: 5px;
+                text-align: center; /* Sentrer teksten */
+            }
+
+            .detection-details .confidence {
+                flex: 0 0 100%; /* Konfidens tar hele bredden */
+                margin-top: 5px;
+                text-align: center; /* Sentrer teksten */
+            }
+
+            .detection-item > div {
+                text-align: center; /* Sentrer innholdet i alle underdiver */
             }
         }
     </style>

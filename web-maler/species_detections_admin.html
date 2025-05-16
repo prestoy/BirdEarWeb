@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Administrer deteksjoner</h1>
-<h2>{{ common_name }} <em>{{ scientific_name }}</em> {{ date | datetimeformat('%-d. %B %Y') }}</h2>
+<h2>{{ common_name | capitalize }} <em>{{ scientific_name }}</em> {{ date | datetimeformat('%-d. %B %Y') }}</h2>
 
 <!-- Lenker for navigasjon -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -46,11 +46,10 @@
                         </label>
                     </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; width: 100%;">
-                    <span><strong>Start:</strong> {{ detection.start_time }} sek</span>
-                    <span><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
-                    <span><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
-                    <span><!-- empty --></span>
+                <div class="detection-details">
+                    <span class="start-end"><strong>Start:</strong> {{ detection.start_time }} sek</span>
+                    <span class="start-end"><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
+                    <span class="confidence"><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
                 </div>
             </div>
             {% endfor %}

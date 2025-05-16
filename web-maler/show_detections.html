@@ -18,29 +18,149 @@
 
 <div>
     {% for species in species_data %}
-        <div class="detection-row" style="margin-bottom: 30px;">
+        <div class="detection-row">
             <!-- Navneområde -->
-            <div class="names" style="margin-bottom: 10px;">
+            <div class="names">
                 <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&min_conf={{ min_conf }}" class="species-link">
                     <strong>{{ species.common_name | capitalize }}</strong>
                 </a><br/>
-                <em>({{ species.scientific_name }})</em>
+                <em>{{ species.scientific_name }}</em>
             </div>
             <!-- Histogram -->
-            <div class="histogram">
-                {% for count in species.histogram %}
-                    <div class="bar-container">
-                        {% if count > 0 %}
-                            <span class="bar-label">{{ count }}</span>
-                        {% endif %}
-                        <div class="bar" style="height: {{ (count / (species.histogram | max) * 100) if species.histogram | max > 0 else 0 }}%;">
-                            <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&hour={{ loop.index0 }}&min_conf={{ min_conf }}" style="width: 100%; height: 100%;"></a>
+            <div class="histogram-container">
+                <div class="histogram">
+                    {% for count in species.histogram %}
+                        <div class="bar-container">
+                            {% if count > 0 %}
+                                <span class="bar-label">{{ count }}</span>
+                            {% endif %}
+                            <div class="bar" style="height: {{ (count / (species.histogram | max) * 100) if species.histogram | max > 0 else 0 }}%;">
+                                <a href="/species_details?scientific_name={{ species.scientific_name.replace(' ', '_') }}&date={{ date }}&hour={{ loop.index0 }}&min_conf={{ min_conf }}" style="width: 100%; height: 100%;"></a>
+                            </div>
+                            <span class="hour-label">{{ loop.index0 }}</span>
                         </div>
-                        <span class="hour-label">{{ loop.index0 }}</span>
-                    </div>
-                {% endfor %}
+                    {% endfor %}
+                </div>
             </div>
         </div>
     {% endfor %}
 </div>
+
+{% block extra_css %}
+<style>
+    /* Sørg for at detection-row holder seg innenfor container */
+    .container {
+        overflow-x: auto; /* Legg til horisontal rulling hvis nødvendig */
+    }
+
+    /* Lokal styling for detection-row */
+    .detection-row {
+        display: flex;
+        flex-wrap: wrap; /* Tillat innhold å bryte til neste linje */
+        align-items: center;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 8px;
+        background-color: #f9f9f9;
+        min-width: 800px; /* Sørg for at detection-row ikke blir smalere enn histogrammet */
+        box-sizing: border-box; /* Inkluder padding og grenser i bredden */
+    }
+
+    /* Lokal styling for navneområdet */
+    .names {
+        flex: 1;
+        min-width: 150px;
+        padding-right: 20px;
+    }
+
+    .names strong {
+        font-weight: bold;
+        font-size: 22px;
+    }
+
+    .names em {
+        font-style: italic;
+        font-size: 22px;
+        color: #555;
+    }
+
+    .species-link {
+        text-decoration: none;
+        color: inherit; /* Bruker normal tekstfarge */
+    }
+
+    .species-link:hover {
+        color: #007bff; /* Standard lenkefarge ved hover */
+        text-decoration: underline; /* Understreker ved hover */
+    }
+
+    /* Lokal styling for histogrammet */
+    .histogram-container {
+        overflow-x: auto; /* Legg til horisontal rulling hvis nødvendig */
+        overflow-y: hidden; /* Skjul vertikal rulling */
+        padding-bottom: 10px; /* Litt ekstra plass under */
+        padding-top: 10px; /* Litt ekstra plass over */
+        display: inline-block; /* Sørg for at containeren tilpasser seg innholdet */
+        min-width: 800px; /* Sørg for at histogrammet alltid har nok plass */
+    }
+
+    .histogram {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        height: 100px; /* Histogrammets høyde */
+        border-left: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
+        padding: 10px;
+        width: 100%; /* Sørg for at histogrammet tilpasser seg containerens bredde */
+        box-sizing: border-box; /* Inkluder padding og grenser i bredden */
+    }
+
+    .bar-container {
+        flex: 1;
+        text-align: center;
+        margin: 0 1px;
+        height: 100%; /* Sørg for at bar-container fyller hele høyden til histogram */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end; /* Plasser stolpen nederst */
+    }
+
+    .bar {
+        width: 15px;
+        background-color: #d1e7ff;
+        transition: background-color 0.3s ease;
+        position: relative; /* Gjør det mulig å plassere <a> inni */
+        margin-left: auto; /* Sentrer stolpen horisontalt */
+        margin-right: auto; /* Sentrer stolpen horisontalt */
+    }
+
+    .bar a {
+        display: block;
+        width: 100%;
+        height: 100%; /* Sørg for at <a> fyller hele høyden til .bar */
+        position: absolute;
+        top: 0;
+        left: 0;
+        text-decoration: none; /* Fjern standard lenkestil */
+    }
+
+    .bar:hover {
+        background-color: #007bff;
+    }
+
+    .bar-label {
+        font-size: 0.7em;
+        margin-bottom: 5px;
+        display: block;
+    }
+
+    .hour-label {
+        font-size: 0.7em;
+        margin-top: 5px;
+        display: block;
+    }
+</style>
+{% endblock %}
 {% endblock %}

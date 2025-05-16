@@ -3,7 +3,7 @@
 {% block title %}{{ title }}{% endblock %}
 
 {% block content %}
-<h1>Deteksjoner for {{ common_name }} <em>{{ scientific_name }}</em> den {{ date | datetimeformat('%-d. %B %Y') }}</h1>
+<h1>Deteksjoner for {{ common_name }} <em>{{ scientific_name }}</em> {{ date | datetimeformat('%-d. %B %Y') }}</h1>
 <h2>
     {% if hour %}
         Mellom kl. {{ hour }} og {{ hour + 1 }} med konfidens {{ min_conf }} eller høyere
