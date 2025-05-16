@@ -29,13 +29,61 @@
             text-decoration: underline;
         }
 
-        /* Stil for registreringsrader */
+        /* Stil for registreringsrader
         .detection-row {
             display: flex;
-            flex-wrap: wrap; /* Gjør at elementene flyter til neste linje hvis plassen er liten */
+            flex-wrap: wrap; * Gjør at elementene flyter til neste linje hvis plassen er liten *
             margin-bottom: 20px;
             border-bottom: 1px solid #ddd;
             padding-bottom: 10px;
+            border-radius: 8px;
+        }
+         */
+        /* Lokal styling for detection-row */
+        .detection-row {
+            display: flex;
+            flex-wrap: wrap; /* Tillat innhold å bryte til neste linje */
+            align-items: center;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            min-width: 800px; /* Sørg for at detection-row ikke blir smalere enn histogrammet */
+            box-sizing: border-box; /* Inkluder padding og grenser i bredden */
+        }
+
+        /* Lokal styling for navneområdet */
+        .names {
+            flex: 1;
+            min-width: 150px;
+            padding-right: 20px;
+        }
+
+        .names strong {
+            font-weight: bold;
+            font-size: 22px;
+        }
+
+        .names em {
+            font-style: italic;
+            font-size: 22px;
+            color: #555;
+        }
+
+        .species-item {
+            border-radius: 8px;
+            box-sizing: border-box; /* Inkluder padding og grenser i bredden */
+        }
+
+        .species-link {
+            text-decoration: none;
+            color: inherit; /* Bruker normal tekstfarge */
+        }
+
+        .species-link:hover {
+            color: #007bff; /* Standard lenkefarge ved hover */
+            text-decoration: underline; /* Understreker ved hover */
         }
 
         /* Venstre del: Metadata */

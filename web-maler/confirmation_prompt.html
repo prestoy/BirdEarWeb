@@ -5,7 +5,10 @@
 {% block content %}
 <h1>Bekreftelse</h1>
 <p>
-    Du har angitt at {{ num_selected }} av {{ total_detections }} deteksjoner av <strong>{{ common_name }}</strong> <em>{{ scientific_name }}</em> den {{ date | datetimeformat('%-d. %B %Y') }} er falske positiver og ikke skal vises som deteksjoner lenger. Stemmer det?
+    Du har angitt at {{ num_selected }} av {{ total_detections }} deteksjoner av <strong>{{ common_name }}</strong> <em>{{ scientific_name }}</em> den {{ date | datetimeformat('%-d. %B %Y') }} er falske positiver.
+</p>
+<p>
+    Disse vil arkivert og vil dermed ikke vises som deteksjoner lenger.
 </p>
 
 <div style="display: flex; justify-content: space-between; margin-top: 20px;">

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Administrer arter{% endblock %}
+
+{% block content %}
+<h1>Administrer arter detektert {{ date | datetimeformat('%-d. %B %Y') }}</h1>
+
+<!-- Lenker for navigasjon -->
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <p><a href="/show_detections?date={{ date }}" class="back-link">&larr; Tilbake til deteksjoner</a></p>
+</div>
+
+<!-- Knappene for arkivering -->
+<div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 20px;;">
+    <button type="submit" id="archive-button" disabled>Arkiver merkede deteksjoner</button>
+    <button type="button" id="select-all">Merk alle arter</button>
+</div>
+
+<!-- Liste over arter -->
+<div class="detections-list" style="width: 100%;">
+    <form method="post" action="/archive_species_detections" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+        <input type="hidden" name="date" value="{{ date }}">
+        {% for species in species_list %}
+        <div class="species-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <p style="margin: 0;"><strong>{{ species.common_name | capitalize }}</strong> <em>{{ species.scientific_name }}</em></p>
+                    <p style="margin: 0;">Totalt antall deteksjoner: {{ species.total_detections }}</p>
+                    <p style="margin: 0;">Konfidens-median: {{ species.confidence_median | round(2) }}</p>
+                </div>
+                <div style="text-align: right;">
+                    <label>
+                        <input type="checkbox" name="archive_species_ids" value="{{ species.scientific_name }}" class="checkbox">
+                        Arkiver dagens deteksjoner for arten
+                    </label>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </form>
+</div>
+
+<script>
+    // Hent referanser til knappen og sjekkboksene
+    const archiveButton = document.getElementById("archive-button");
+    const checkboxes = document.querySelectorAll("input[name='archive_species_ids']");
+    const selectAllButton = document.getElementById("select-all");
+
+
+    // Funksjon for å oppdatere knappens status
+    function updateButtonState() {
+        const anyChecked = Array.from(checkboxes).some(checkbox => checkbox.checked);
+        archiveButton.disabled = !anyChecked; // Deaktiver hvis ingen er merket
+    }
+
+    // Legg til event listeners på alle sjekkboksene
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener("change", updateButtonState);
+    });
+
+    // Legg til funksjonalitet for "Merk alle arter"-knappen
+    selectAllButton.addEventListener("click", function() {
+        const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+
+        // Hvis alle er merket, fjern merkingen; ellers merk alle
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = !allChecked;
+        });
+
+        // Oppdater knappens status
+        updateButtonState();
+    });
+
+    // Legg til funksjonalitet for "Arkiver som falske positiver"-knappen
+    archiveFalsePositivesButton.addEventListener("click", function() {
+        alert("Funksjonalitet for å arkivere som falske positiver er ikke implementert ennå.");
+    });
+
+    // Legg til funksjonalitet for "Arkiver alle arter"-knappen
+    archiveAllButton.addEventListener("click", function() {
+        alert("Funksjonalitet for å arkivere alle arter er ikke implementert ennå.");
+    });
+
+    // Oppdater knappens status ved lasting av siden
+    updateButtonState();
+</script>
+{% endblock %}

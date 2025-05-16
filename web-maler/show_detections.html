@@ -3,10 +3,12 @@
 {% block title %}Deteksjoner for {{ date | datetimeformat('%d. %B %Y') }}{% endblock %}
 
 {% block content %}
-<h1>Deteksjoner for {{ date | datetimeformat('%d. %B %Y') }}</h1>
+<h1>Deteksjoner for {{ date | datetimeformat('%-d. %B %Y') }}</h1>
 
-<!-- Lenke for å gå tilbake til "/" -->
-<a href="/" class="back-link" style="display: inline-block; margin-bottom: 20px;">&larr; Tilbake til kalender</a>
+<div style="display: flex; justify-content: space-between; align-items: center; ">
+    <p><a href="/" class="back-link">&larr; Tilbake til kalender</a></p>
+    <p><a href="/species_admin?date={{ date }}" class="admin-link" style="text-align: right;">Administrer arter &rarr;</a></p>
+</div>
 
 <!-- Skjema for å endre minimum konfidensnivå -->
 <form method="get" action="/show_detections" style="margin-bottom: 20px;">
@@ -48,52 +50,6 @@
 
 {% block extra_css %}
 <style>
-    /* Sørg for at detection-row holder seg innenfor container */
-    .container {
-        overflow-x: auto; /* Legg til horisontal rulling hvis nødvendig */
-    }
-
-    /* Lokal styling for detection-row */
-    .detection-row {
-        display: flex;
-        flex-wrap: wrap; /* Tillat innhold å bryte til neste linje */
-        align-items: center;
-        margin-bottom: 20px;
-        border: 1px solid #ddd;
-        padding: 10px;
-        border-radius: 8px;
-        background-color: #f9f9f9;
-        min-width: 800px; /* Sørg for at detection-row ikke blir smalere enn histogrammet */
-        box-sizing: border-box; /* Inkluder padding og grenser i bredden */
-    }
-
-    /* Lokal styling for navneområdet */
-    .names {
-        flex: 1;
-        min-width: 150px;
-        padding-right: 20px;
-    }
-
-    .names strong {
-        font-weight: bold;
-        font-size: 22px;
-    }
-
-    .names em {
-        font-style: italic;
-        font-size: 22px;
-        color: #555;
-    }
-
-    .species-link {
-        text-decoration: none;
-        color: inherit; /* Bruker normal tekstfarge */
-    }
-
-    .species-link:hover {
-        color: #007bff; /* Standard lenkefarge ved hover */
-        text-decoration: underline; /* Understreker ved hover */
-    }
 
     /* Lokal styling for histogrammet */
     .histogram-container {

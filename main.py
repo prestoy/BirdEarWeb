@@ -50,15 +50,7 @@ def datetimeformat(value, format='%d. %B %Y %H:%M:%S'):
     return formatted_date
 
 templates.env.filters['datetimeformat'] = datetimeformat
-
-def month_name(month):
-    months = [
-        "Januar", "Februar", "Mars", "April", "Mai", "Juni",
-        "Juli", "August", "September", "Oktober", "November", "Desember"
-    ]
-    return months[month - 1]
-
-templates.env.filters['month_name'] = month_name
+templates.env.filters['month_name'] = lambda month: datetime(2000, month, 1).strftime("%B")
 
 # Mount statiske filer (for CSS, JS, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -431,6 +423,7 @@ async def archive_false_positives(
 
     # Sjekk om brukeren er autentisert
     token = request.cookies.get("access_token")
+
     if not token or not verify_token(token):
         return templates.TemplateResponse("password_prompt.html", {
             "request": request,
@@ -543,31 +536,74 @@ async def authenticate(
     else:
         raise HTTPException(status_code=401, detail="Feil passord")
 
-@app.post("/delete_all_detections")
-async def delete_all_detections(
-    request: Request,
-    scientific_name: str = Form(...),
-    date: str = Form(...)
-):
-    # Hent token fra cookies
-    token = request.cookies.get("access_token")
-    if not token or not verify_token(token):
-        raise HTTPException(status_code=401, detail="Not authenticated")
+@app.route('/species_admin', methods=['GET', 'POST'])
+def species_admin(request: Request):
+    date = request.query_params.get('date')  # Hent dato fra query-parameter
+    if request.method == 'POST':
+        species_ids = request.form.getlist('archive_species_ids')
+        # Logikk for å arkivere arter basert på species_ids
+        archive_species_detections(species_ids, date)
+        flash('Valgte arter er arkivert.')
+        return RedirectResponse(url=f"/species_admin?date={date}", status_code=303)
+    
+    # Hent liste over arter for gitt dato
+    species_list = get_species_list(date)
+    return templates.TemplateResponse('species_admin.html', {
+        "request": request,
+        "date": date,
+        "species_list": species_list
+    })
 
-    # Slett alle deteksjoner for arten på den angitte datoen
-    query = '''
-        DELETE FROM detections
-        WHERE scientific_name = ? AND DATE(timestamp) = ?
-    '''
-    execute_db(query, (scientific_name, date))
-    return RedirectResponse(url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}", status_code=303)
+def calculate_median(values):
+    """
+    Beregn medianen av en liste med verdier.
+    """
+    values = sorted(values)
+    n = len(values)
+    if n == 0:
+        return None
+    if n % 2 == 1:
+        return values[n // 2]
+    else:
+        return (values[n // 2 - 1] + values[n // 2]) / 2
 
-@app.post("/delete_detection")
-async def delete_detection(timestamp: str = Form(...), token: str = Depends(OAuth2PasswordBearer(tokenUrl="token"))):
-    verify_token(token)
+def get_species_list(date):
+    """
+    Hent liste over arter detektert på en gitt dato.
+    Returnerer en liste med ordbøker som inneholder:
+    - scientific_name: Vitenskapelig navn
+    - common_name: Norsk navn
+    - total_detections: Totalt antall deteksjoner
+    - confidence_median: Median av konfidensverdier
+    """
+    # Hent alle deteksjoner for datoen
     query = '''
-        DELETE FROM detections
-        WHERE timestamp = ?
+        SELECT scientific_name, confidence
+        FROM detections
+        WHERE DATE(timestamp) = ?
     '''
-    fetch_from_db(query, (timestamp,))
-    return RedirectResponse(url=f"/species_detections_admin", status_code=303)
+    rows = fetch_from_db(query, (date,))
+
+    # Organiser data etter art
+    species_data = defaultdict(list)
+    for scientific_name, confidence in rows:
+        species_data[scientific_name].append(confidence)
+
+    # Generer liste over arter med beregnet median
+    species_list = []
+    for scientific_name, confidences in species_data.items():
+        total_detections = len(confidences)
+        confidence_median = calculate_median(confidences)
+        common_name = species_mapping.get(scientific_name, "Ukjent")
+
+        species_list.append({
+            "scientific_name": scientific_name,
+            "common_name": common_name,
+            "total_detections": total_detections,
+            "confidence_median": confidence_median
+        })
+
+    # Sorter etter totalt antall deteksjoner i synkende rekkefølge
+    species_list.sort(key=lambda x: x["total_detections"], reverse=True)
+
+    return species_list
