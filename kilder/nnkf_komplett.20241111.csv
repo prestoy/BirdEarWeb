@@ -2013,7 +2013,7 @@ Pluvialis dominica;kanadalo;American Golden Plover
 Oreopholus ruficollis;rusthalslo;Tawny-throated Dotterel
 Zonibyx modestus;gråkinnlo;Rufous-chested Dotterel
 Phegornis mitchellii;diademlo;Diademed Sandpiper-Plover
-Eudromias morinellus;boltit;Eurasian Dotterel
+Charadrius morinellus;boltit;Eurasian Dotterel
 Charadrius vociferus;tobeltelo;Killdeer
 Charadrius hiaticula;sandlo;Common Ringed Plover
 Charadrius semipalmatus;amerikasandlo;Semipalmated Plover
@@ -2886,13 +2886,13 @@ Accipiter striatus;tverrhalehauk;Sharp-shinned Hawk
 Accipiter chionogaster;hvitbrysthauk;White-breasted Hawk
 Accipiter ventralis;andeshauk;Plain-breasted Hawk
 Accipiter erythronemius;rustlegghauk;Rufous-thighed Hawk
+Accipiter gentilis;hønsehauk;Eurasian Goshawk
 Astur cooperii;trostehauk;Cooper's Hawk
 Astur gundlachi;kubahauk;Gundlach's Hawk
 Astur bicolor;rødbuksehauk;Bicolored Hawk
 Astur chilensis;chilehauk;Chilean Hawk
 Astur melanoleucus;nonnehauk;Black Sparrowhawk
 Astur henstii;mesitthauk;Henst's Goshawk
-Astur gentilis;hønsehauk;Eurasian Goshawk
 Astur atricapillus;kråkehauk;American Goshawk
 Astur meyerianus;sørgehauk;Meyer's Goshawk
 Megatriorchis doriae;tigerhauk;Doria's Hawk
@@ -7054,7 +7054,7 @@ Nucifraga multipunctata;kashmirnøttekråke;Kashmir Nutcracker
 Pyrrhocorax pyrrhocorax;alpekråke;Red-billed Chough
 Pyrrhocorax graculus;alpekaie;Alpine Chough
 Ptilostomus afer;svartskjære;Piapiac
-Coloeus monedula;kaie;Western Jackdaw
+Corvus monedula;kaie;Western Jackdaw
 Coloeus dauuricus;mongolkaie;Daurian Jackdaw
 Corvus splendens;huskråke;House Crow
 Corvus moneduloides;kortnebbkråke;New Caledonian Crow
