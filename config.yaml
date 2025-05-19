@@ -1,13 +1,15 @@
 # Sti til SQLite-databasen
 #db-path: "/mnt/e33nas_felles/birdmic/data/birdmic_detections.prod.db"  
-db-path: "/mnt/e33nas_felles/birdmic/TEST/data-TEST/birdmic_detections.TEST.db"  
+#db-path: "/mnt/e33nas_felles/birdmic/TEST/data-TEST/birdmic_detections.TEST.db"  
+db-path: "/home/stapre/tmp/TEST_uten-opptak/TEST/data-TEST/birdmic_detections.TEST.db"  
 
 # Sti til CSV-filen med norske artsnavn 
 species-map: "kilder/nnkf_komplett.20241111.csv" 
 
 # Sti til lydklippene
 #audio-path: "/mnt/e33nas_felles/birdmic/audioarkiv"
-audio-path: "/mnt/e33nas_felles/birdmic/TEST/audioarkiv-TEST"
+#audio-path: "/mnt/e33nas_felles/birdmic/TEST/audioarkiv-TEST"
+audio-path: "/home/stapre/tmp/TEST_uten-opptak/TEST/audioarkiv-TEST"
 
 # Konfigurasjon for pålogging til admin-grensesnittet
 password_hash_file: "pwd_hash.txt"  # Fil med passordhash

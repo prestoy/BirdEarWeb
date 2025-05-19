@@ -451,7 +451,7 @@ async def species_admin(request: Request, date: str):
     })
 
 @app.post("/species_admin/archive")
-async def archive_species_admin(
+async def species_admin_archive(
     request: Request,
     archive_species_ids: list[str] = Form(...),
     date: str = Form(...),
@@ -463,7 +463,7 @@ async def archive_species_admin(
     """
     # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
     if not confirm:
-        species_detections = []
+        species_list = []
         total_detections = 0
 
         # Hent detaljer for hver art
@@ -480,7 +480,7 @@ async def archive_species_admin(
             common_name = species_mapping.get(scientific_name, "Ukjent")
 
             # Legg til data for bekreftelsesdialogen
-            species_detections.append({
+            species_list.append({
                 "scientific_name": scientific_name,
                 "common_name": common_name,
                 "detections": len(rows)
@@ -490,7 +490,7 @@ async def archive_species_admin(
         return templates.TemplateResponse("confirmation_prompt.html", {
             "request": request,
             "date": date,
-            "species_detections": species_detections,
+            "species_list": species_list,
             "total_detections": total_detections
         })
 
@@ -516,8 +516,7 @@ async def archive_species_admin(
 async def species_detections_admin(
     request: Request,
     scientific_name: str,
-    date: str,
-    confidence_threshold: Optional[float] = None
+    date: str
 ):
     """
     Hent deteksjoner for en art på en gitt dato, med mulighet for filtrering etter konfidens.
@@ -554,22 +553,67 @@ async def species_detections_admin(
     })
 
 @app.post("/species_detections_admin/archive")
-async def archive_detections_admin(
+async def species_detections_admin_archive(
     request: Request,
     scientific_name: str = Form(...),
     date: str = Form(...),
-    false_positive_ids: list[str] = Form(...)
+    false_positive_ids: Optional[list[str]] = Form(None),
+    confirm: Optional[bool] = Form(False)
 ):
     """
-    Flytt spesifikke deteksjoner til false_positives.
+    Flytt spesifikke deteksjoner til false_positives-tabellen etter bekreftelse.
     """
-    # Kall den generaliserte ruten
-    await archive_false_positives(
-        request=request,
-        date=date,
-        detection_ids=false_positive_ids
-    )
+    # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
+    if not confirm:
+        false_positives = []
+        total_detections = 0
 
+        # Hent detaljer for de valgte deteksjonene
+        if false_positive_ids:
+            query = '''
+                SELECT id, timestamp, scientific_name
+                FROM detections
+                WHERE id IN ({})
+            '''.format(",".join("?" for _ in false_positive_ids))
+            rows = fetch_from_db(query, false_positive_ids)
+            print(f"False positive IDs: {false_positive_ids}")
+
+            for row in rows:
+                false_positives.append({
+                    "id": row[0],
+                    "timestamp": row[1],
+                    "scientific_name": row[2],
+                    "common_name": species_mapping.get(row[2], "Ukjent"),
+                    "detections": len(false_positive_ids)
+                })
+            total_detections = len(rows)
+
+        # Returner bekreftelsesdialogen
+        return templates.TemplateResponse("confirmation_prompt.html", {
+            "request": request,
+            "date": date,
+            "scientific_name": scientific_name,
+            "false_positives": false_positives,
+            "total_detections": total_detections
+        })
+
+    # Hvis bekreftelse er gitt, flytt dataene
+    if false_positive_ids:
+        query_insert = '''
+            INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
+            SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
+            FROM detections
+            WHERE id = ?
+        '''
+        query_delete = '''
+            DELETE FROM detections
+            WHERE id = ?
+        '''
+        for detection_id in false_positive_ids:
+            execute_db(query_insert, (detection_id,))
+            execute_db(query_delete, (detection_id,))
+
+    # Omdiriger tilbake til species_detections_admin-siden
     return RedirectResponse(
         url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
         status_code=303

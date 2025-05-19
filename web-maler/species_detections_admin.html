@@ -40,7 +40,7 @@
                     </audio>
                     <div style="margin-top: 10px; text-align: right;">
                         <label>
-                            <input type="checkbox" name="false_positive_ids" value="{{ detection.timestamp }}" class="checkbox">
+                            <input type="checkbox" name="false_positive_ids" value="{{ detection.id }}" class="checkbox">
                             Merk som falsk positiv
                         </label>
                     </div>
@@ -49,7 +49,7 @@
                     <span class="start-end"><strong>Start:</strong> {{ detection.start_time }} sek</span>
                     <span class="start-end"><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
                     <span class="confidence">
-                        <strong>Konfidens:</strong> {{ detection.confidence }}
+                        <strong>Konfidens:</strong> {{ detection.confidence | round(2) }}
                     </span>
                 </div>
             </div>
