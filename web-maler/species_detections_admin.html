@@ -13,25 +13,24 @@
 
 <!-- Form for å filtrere etter konfidens og knapper -->
 <div style="display: flex; align-items: center; margin-bottom: 10px; width: 100%;">
-    <form method="post" action="/archive_false_positives" style="display: flex; flex-direction: column; gap: 10px; width: 100%; margin-right: 20px;">
+    <form method="post" action="/species_detections_admin/archive" style="display: flex; flex-direction: column; gap: 10px; width: 100%; margin-right: 20px;">
         <div style="display: flex; flex-direction: column; margin-bottom: 20px; width: 100%;">
             <input type="hidden" name="scientific_name" value="{{ scientific_name }}">
             <input type="hidden" name="date" value="{{ date }}">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <div style="flex: 1; text-align: left;">
                     <label for="min_conf" style="font-weight: bold;">Øvre konfidens-grense:</label>
-                    <input type="number" step="0.1" min="0" max="1" id="min_conf" name="min_conf" value="{{ min_conf }}" style="width: 80px; padding: 5px; margin-left: 10px;">
+                    <input type="number" step="0.1" min="0" max="1" id="min_conf" name="min_conf" value="{{ confidence_threshold }}" style="width: 80px; padding: 5px; margin-left: 10px;">
                 </div>
                 <div style="flex: 1; text-align: right;">
-                    <button type="submit" id="archive-button" disabled>Arkiver merkede som falske positiver</button>
+                    <button type="submit" id="archive-button" disabled>Arkiver merkede deteksjoner</button>
                     <button type="button" id="select-all">Merk alle som falske positiver</button>
-                </div>
+                        </div>
             </div>
         </div>
 
         <!-- Liste over deteksjoner -->
-        <div class="detections-list" style="width: 100%; padding-right: 20px;">
-            {% for detection in detections %}
+        {% for detection in detections %}
             <div class="detection-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; width: 100%;">
                 <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                     <p style="margin: 0;"><strong>Lydfil:</strong> {{ detection.recording }}</p>
@@ -49,10 +48,12 @@
                 <div class="detection-details">
                     <span class="start-end"><strong>Start:</strong> {{ detection.start_time }} sek</span>
                     <span class="start-end"><strong>Slutt:</strong> {{ detection.end_time }} sek</span>
-                    <span class="confidence"><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</span>
+                    <span class="confidence">
+                        <strong>Konfidens:</strong> {{ detection.confidence }}
+                    </span>
                 </div>
             </div>
-            {% endfor %}
+        {% endfor %}
         </div>
     </form>
 </div>

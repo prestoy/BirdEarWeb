@@ -39,7 +39,7 @@
                         Ikke tilgjengelig
                     {% endif %}
                 </p>
-                <p><strong>Konfidens:</strong> {{ detection.confidence }}</p>
+                <p><strong>Konfidens:</strong> {{ detection.confidence | round(2) }}</p>
             </div>
             <!-- Høyre del: Avspiller eller melding -->
             <div class="detection-player">

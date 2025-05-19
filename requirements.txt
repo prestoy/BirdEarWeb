@@ -339,3 +339,7 @@ xlrd==2.0.1
 xxhash==0.0.0
 zeroconf==0.131.0
 zipp==1.0.0
+bcrypt==4.3.0
+Jinja2==3.1.6
+jose==1.0.0
+MarkupSafe==3.0.2

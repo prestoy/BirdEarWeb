@@ -28,6 +28,13 @@ config = load_config()
 
 app = FastAPI()
 
+# Mount statiske filer (for CSS, JS, etc.)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount lydfiler fra audio-path i config.yaml
+#app.mount("/static/audio", StaticFiles(directory=config["audio-path"]), name="audio")
+app.mount("/audio", StaticFiles(directory=config["audio-path"]), name="audio")
+
 # Sett opp Jinja2-templates
 templates = Jinja2Templates(directory="web-maler")
 
@@ -51,13 +58,6 @@ def datetimeformat(value, format='%d. %B %Y %H:%M:%S'):
 
 templates.env.filters['datetimeformat'] = datetimeformat
 templates.env.filters['month_name'] = lambda month: datetime(2000, month, 1).strftime("%B")
-
-# Mount statiske filer (for CSS, JS, etc.)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Mount lydfiler fra audio-path i config.yaml
-#app.mount("/static/audio", StaticFiles(directory=config["audio-path"]), name="audio")
-app.mount("/audio", StaticFiles(directory=config["audio-path"]), name="audio")
 
 # Hjelpefunksjon: Les artsmapping fra CSV
 def load_species_mapping(csv_path):
@@ -314,12 +314,13 @@ async def species_details(
             end_time_display = None
 
         detections.append({
-            "timestamp": formatted_timestamp,
-            "recording": recording,
+            "timestamp": row[0],
+            "recording": row[1],
             "audio_file": audio_file,
             "start_time": start_time_display,
             "end_time": end_time_display,
-            "confidence": round(confidence, 2)
+            "confidence": row[4] if row[4] is not None else 0.0  # Sett standardverdi
+            #"confidence": round(confidence, 2)
         })
 
     # Hent norsk navn for arten
@@ -336,182 +337,6 @@ async def species_details(
         "total_detections": len(detections),
         "title": f"Detaljer for {common_name} ({scientific_name})"
     })
-
-# Funksjon for å generere JWT-token
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
-    return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
-
-# Funksjon for å verifisere JWT-token
-def verify_token(token: str):
-    try:
-        payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
-        return payload
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
-
-# Funksjon for å verifisere passord med bcrypt
-def verify_password(password: str):
-    with open(config["password_hash_file"], "r") as file:
-        stored_hash = file.read().strip().encode("utf-8")  # Les hashen og konverter til bytes
-    return checkpw(password.encode("utf-8"), stored_hash)  # Sammenlign passordet med hashen
-
-# Rute for "/species_detections_admin"
-@app.get("/species_detections_admin", response_class=HTMLResponse)
-async def species_detections_admin(
-    request: Request,
-    scientific_name: str,
-    date: str,
-    min_conf: float = 1.0  # Standardverdi for confidence-nivå
-):
-    # Sjekk om brukeren er autentisert
-    token = request.cookies.get("access_token")
-    if not token or not verify_token(token):
-        # Hvis brukeren ikke er autentisert, vis passordskjema
-        return templates.TemplateResponse("password_prompt.html", {
-            "request": request,
-            "scientific_name": scientific_name,
-            "date": date
-        })
-
-    # Hent data fra databasen
-    query = '''
-        SELECT timestamp, recording, start_time, end_time, confidence
-        FROM detections
-        WHERE DATE(timestamp) = ? AND scientific_name = ? AND confidence <= ?
-        ORDER BY timestamp ASC, start_time ASC
-    '''
-    rows = fetch_from_db(query, (date, scientific_name.replace("_", " "), min_conf))
-
-    # Konverter rader til en liste med ordbøker
-    detections = [
-        {
-            "timestamp": row[0],
-            "recording": row[1],
-            "start_time": row[2],
-            "end_time": row[3],
-            "confidence": row[4],
-        }
-        for row in rows
-    ]
-
-
-    # Hent norsk navn for arten
-    common_name = species_mapping.get(scientific_name, "Ukjent")
-
-    return templates.TemplateResponse("species_detections_admin.html", {
-        "request": request,
-        "scientific_name": scientific_name,
-        "common_name": common_name,
-        "date": date,
-        "min_conf": min_conf,
-        "detections": detections,
-        "title": f"Administrer deteksjoner for {scientific_name} {date}"
-    })
-
-@app.post("/archive_false_positives", response_class=HTMLResponse)
-async def archive_false_positives(
-    request: Request,
-    scientific_name: str = Form(...),
-    date: str = Form(...),
-    false_positive_ids: Optional[list[str]] = Form(None)  # Gjør feltet valgfritt
-):
-    # Hvis ingen deteksjoner er merket, sett false_positive_ids til en tom liste
-    if not false_positive_ids:
-        false_positive_ids = []
-
-    # Sjekk om brukeren er autentisert
-    token = request.cookies.get("access_token")
-
-    if not token or not verify_token(token):
-        return templates.TemplateResponse("password_prompt.html", {
-            "request": request,
-            "scientific_name": scientific_name,
-            "date": date
-        })
-
-    # Antall merkede deteksjoner
-    num_selected = len(false_positive_ids)
-
-    # Hent totalt antall deteksjoner for arten på den angitte datoen
-    query_total = '''
-        SELECT COUNT(*)
-        FROM detections
-        WHERE DATE(timestamp) = ? AND scientific_name = ?
-    '''
-    total_detections = fetch_from_db(query_total, (date, scientific_name.replace("_", " ")))[0][0]
-
-    # Hent norsk navn for arten
-    common_name = species_mapping.get(scientific_name, "Ukjent")
-
-    # Bekreftelsesdialog
-    if "confirm" not in request.query_params:
-        return templates.TemplateResponse("confirmation_prompt.html", {
-            "request": request,
-            "scientific_name": scientific_name,
-            "common_name": common_name,
-            "date": date,
-            "num_selected": num_selected,
-            "total_detections": total_detections,
-            "false_positive_ids": false_positive_ids
-        })
-
-    # Hvis brukeren bekrefter, flytt dataene
-    if request.query_params.get("confirm") == "true":
-        with sqlite3.connect(config["db-path"]) as conn:
-            cursor = conn.cursor()
-
-            # Flytt merkede deteksjoner til false_positives
-            cursor.executemany('''
-                INSERT INTO false_positives (id, location_id, timestamp, recording, start_time, end_time, confidence, scientific_name)
-                SELECT id, location_id, timestamp, recording, start_time, end_time, confidence, scientific_name
-                FROM detections
-                WHERE timestamp = ? AND scientific_name = ?
-            ''', [(fp_id, scientific_name) for fp_id in false_positive_ids])
-
-            # Slett merkede deteksjoner fra detections
-            cursor.executemany('''
-                DELETE FROM detections
-                WHERE timestamp = ? AND scientific_name = ?
-            ''', [(fp_id, scientific_name) for fp_id in false_positive_ids])
-
-            conn.commit()
-
-    # Oppfrisk siden med samme parametre
-    return RedirectResponse(
-        url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
-        status_code=303
-    )
-
-@app.post("/archive_false_positives")
-async def archive_false_positives(
-    request: Request,
-    scientific_name: str = Form(...),
-    date: str = Form(...),
-    false_positive_ids: list[str] = Form(...)
-):
-    # Hent token fra cookies
-    token = request.cookies.get("access_token")
-    if not token or not verify_token(token):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    # Flytt merkede deteksjoner til false_positives-tabellen
-    query_insert = '''
-        INSERT INTO false_positives (timestamp, recording, start_time, end_time, confidence, scientific_name)
-        SELECT timestamp, recording, start_time, end_time, confidence, scientific_name
-        FROM detections
-        WHERE timestamp = ? AND scientific_name = ?
-    '''
-    query_delete = '''
-        DELETE FROM detections
-        WHERE timestamp = ? AND scientific_name = ?
-    '''
-    for detection_id in false_positive_ids:
-        execute_db(query_insert, (detection_id, scientific_name))
-        execute_db(query_delete, (detection_id, scientific_name))
-
-    return RedirectResponse(url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}", status_code=303)
 
 # Rute for passordautentisering
 @app.post("/authenticate")
@@ -536,23 +361,25 @@ async def authenticate(
     else:
         raise HTTPException(status_code=401, detail="Feil passord")
 
-@app.route('/species_admin', methods=['GET', 'POST'])
-def species_admin(request: Request):
-    date = request.query_params.get('date')  # Hent dato fra query-parameter
-    if request.method == 'POST':
-        species_ids = request.form.getlist('archive_species_ids')
-        # Logikk for å arkivere arter basert på species_ids
-        archive_species_detections(species_ids, date)
-        flash('Valgte arter er arkivert.')
-        return RedirectResponse(url=f"/species_admin?date={date}", status_code=303)
-    
-    # Hent liste over arter for gitt dato
-    species_list = get_species_list(date)
-    return templates.TemplateResponse('species_admin.html', {
-        "request": request,
-        "date": date,
-        "species_list": species_list
-    })
+# Funksjon for å generere JWT-token
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
+    return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
+
+# Funksjon for å verifisere JWT-token
+def verify_token(token: str):
+    try:
+        payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
+
+# Funksjon for å verifisere passord med bcrypt
+def verify_password(password: str):
+    with open(config["password_hash_file"], "r") as file:
+        stored_hash = file.read().strip().encode("utf-8")  # Les hashen og konverter til bytes
+    return checkpw(password.encode("utf-8"), stored_hash)  # Sammenlign passordet med hashen
 
 def calculate_median(values):
     """
@@ -607,3 +434,143 @@ def get_species_list(date):
     species_list.sort(key=lambda x: x["total_detections"], reverse=True)
 
     return species_list
+
+@app.get("/species_admin", response_class=HTMLResponse)
+async def species_admin(request: Request, date: str):
+    """
+    Hent liste over arter for en gitt dato og vis administrasjonssiden.
+    """
+    # Hent liste over arter for gitt dato
+    species_list = get_species_list(date)
+
+    # Returner HTML-siden med listen over arter
+    return templates.TemplateResponse('species_admin.html', {
+        "request": request,
+        "date": date,
+        "species_list": species_list
+    })
+
+@app.post("/species_admin/archive")
+async def archive_species_admin(
+    request: Request,
+    archive_species_ids: list[str] = Form(...),
+    date: str = Form(...),
+    confirm: Optional[bool] = Form(False)
+):
+    """
+    Arkiver valgte arter for en gitt dato.
+    Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog.
+    """
+    # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
+    if not confirm:
+        species_detections = []
+        total_detections = 0
+
+        # Hent detaljer for hver art
+        for scientific_name in archive_species_ids:
+            query = '''
+                SELECT id
+                FROM detections
+                WHERE DATE(timestamp) = ? AND scientific_name = ?
+            '''
+            rows = fetch_from_db(query, (date, scientific_name))
+            total_detections += len(rows)
+
+            # Hent norsk navn for arten
+            common_name = species_mapping.get(scientific_name, "Ukjent")
+
+            # Legg til data for bekreftelsesdialogen
+            species_detections.append({
+                "scientific_name": scientific_name,
+                "common_name": common_name,
+                "detections": len(rows)
+            })
+
+        # Returner bekreftelsesdialogen
+        return templates.TemplateResponse("confirmation_prompt.html", {
+            "request": request,
+            "date": date,
+            "species_detections": species_detections,
+            "total_detections": total_detections
+        })
+
+    # Hvis bekreftelse er gitt, flytt dataene
+    for scientific_name in archive_species_ids:
+        query_insert = '''
+            INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
+            SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
+            FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ?
+        '''
+        query_delete = '''
+            DELETE FROM detections
+            WHERE DATE(timestamp) = ? AND scientific_name = ?
+        '''
+        execute_db(query_insert, (date, scientific_name))
+        execute_db(query_delete, (date, scientific_name))
+
+    # Returner en bekreftelse på at dataene er arkivert
+    return RedirectResponse(url=f"/species_admin?date={date}", status_code=303)
+
+@app.get("/species_detections_admin", response_class=HTMLResponse)
+async def species_detections_admin(
+    request: Request,
+    scientific_name: str,
+    date: str,
+    confidence_threshold: Optional[float] = None
+):
+    """
+    Hent deteksjoner for en art på en gitt dato, med mulighet for filtrering etter konfidens.
+    """
+    query = '''
+        SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
+        FROM detections
+        WHERE DATE(timestamp) = ? AND scientific_name = ?
+    '''
+    params = [date, scientific_name]
+
+    rows = fetch_from_db(query, params)
+    detections = []
+    for row in rows:
+        detections.append({
+            "id": row[0],
+            "location_id": row[1],
+            "timestamp": row[2],
+            "scientific_name": row[3],
+            "confidence": row[4] if row[4] is not None else None,  # Sett standardverdi
+            "recording": row[5],
+            "start_time": row[6],
+            "end_time": row[7]
+        })
+
+    common_name = species_mapping.get(scientific_name, "Ukjent")
+    return templates.TemplateResponse("species_detections_admin.html", {
+        "request": request,
+        "scientific_name": scientific_name,
+        "common_name": common_name,
+        "date": date,
+        "detections": detections,
+        "confidence_threshold": 1.0
+    })
+
+@app.post("/species_detections_admin/archive")
+async def archive_detections_admin(
+    request: Request,
+    scientific_name: str = Form(...),
+    date: str = Form(...),
+    false_positive_ids: list[str] = Form(...)
+):
+    """
+    Flytt spesifikke deteksjoner til false_positives.
+    """
+    # Kall den generaliserte ruten
+    await archive_false_positives(
+        request=request,
+        date=date,
+        detection_ids=false_positive_ids
+    )
+
+    return RedirectResponse(
+        url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
+        status_code=303
+    )
