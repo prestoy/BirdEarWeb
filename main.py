@@ -15,6 +15,7 @@ import locale
 import time
 from bcrypt import checkpw
 from typing import Optional
+import re
 
 # Sett norsk locale
 locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
@@ -394,6 +395,41 @@ def calculate_median(values):
     else:
         return (values[n // 2 - 1] + values[n // 2]) / 2
 
+def calculate_offset_time(timestamp_str, offset):
+    """
+    Funksjon for å legge til offset-tid til timestamp i tekstformat "%Y-%m-%d[?]%H:%M:%S".
+    Wildcard kan være hvilken som helst enkelt karakter.
+    """
+
+    # Regex for å validere og trekke ut dato og klokkeslett
+    pattern = r"^(\d{4}-\d{2}-\d{2}).(\d{2}:\d{2}:\d{2})$"
+    match = re.match(pattern, timestamp_str)
+
+    if not match:
+        raise ValueError(f"Invalid timestamp format: {timestamp_str}. Expected format: '%Y-%m-%d[?]%H:%M:%S'")
+
+    # Ekstraher dato og klokkeslett fra timestamp_str
+    date_part, time_part = match.groups()
+    full_timestamp = f"{date_part} {time_part}"
+
+    # Konverter til datetime-objekt
+    try:
+        timestamp = datetime.strptime(full_timestamp, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        raise ValueError(f"Invalid timestamp format after extraction: {full_timestamp}. Expected format: '%Y-%m-%d %H:%M:%S'")
+
+    # Konverter offset til timedelta hvis det ikke allerede er det
+    if isinstance(offset, (int, float)):
+        offset = timedelta(seconds=offset)
+    elif not isinstance(offset, timedelta):
+        raise TypeError("The 'offset' parameter must be a 'timedelta' object or a numeric value representing seconds.")
+
+    # Legg til offset
+    offset_timestamp = timestamp + offset
+
+    # Returner klokkeslettet som HH:MM:SS
+    return offset_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
 def get_species_list(date):
     """
     Hent liste over arter detektert på en gitt dato.
@@ -544,6 +580,8 @@ async def species_detections_admin(
             "start_time": row[6],
             "end_time": row[7]
         })
+    
+    total_detections = len(rows)
 
     common_name = species_mapping.get(scientific_name, "Ukjent")
     return templates.TemplateResponse("species_detections_admin.html", {
@@ -552,15 +590,39 @@ async def species_detections_admin(
         "common_name": common_name,
         "date": date,
         "detections": detections,
-        "confidence_threshold": 1.0
+        "confidence_threshold": 1.0,
+        "total_detections": total_detections
     })
+
+@app.get("/species_detections_admin/archive")
+async def species_detections_admin_archive_get(
+    scientific_name: str,
+    date: str,
+    archive_detections: Optional[list[str]] = None,
+    confirm: Optional[bool] = False
+):
+    """
+    Håndter GET-forespørsel for å omdirigere brukeren tilbake til species_detections_admin.
+    """
+    params = {
+        "scientific_name": scientific_name,
+        "date": date
+    }
+
+    # Legg til archive_detections og confirm bare hvis de er sendt inn
+    if archive_detections:
+        params["archive_detections"] = archive_detections
+    if confirm:
+        params["confirm"] = confirm
+
+    return RedirectResponse(url=params, status_code=303)
 
 @app.post("/species_detections_admin/archive")
 async def species_detections_admin_archive(
     request: Request,
     scientific_name: str = Form(...),
     date: str = Form(...),
-    false_positive_ids: Optional[list[str]] = Form(None),
+    archive_detections: Optional[list[str]] = Form(None),
     confirm: Optional[bool] = Form(False)
 ):
     """
@@ -568,26 +630,26 @@ async def species_detections_admin_archive(
     """
     # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
     if not confirm:
-        false_positives = []
+        false_positive_detections = []
         total_detections = 0
 
         # Hent detaljer for de valgte deteksjonene
-        if false_positive_ids:
+        if archive_detections:
             query = '''
-                SELECT id, timestamp, scientific_name
+                SELECT id, timestamp, start_time, confidence
                 FROM detections
                 WHERE id IN ({})
-            '''.format(",".join("?" for _ in false_positive_ids))
-            rows = fetch_from_db(query, false_positive_ids)
-            print(f"False positive IDs: {false_positive_ids}")
+            '''.format(",".join("?" for _ in archive_detections))
+            rows = fetch_from_db(query, archive_detections)
+
+            # Hent norsk navn for arten
+            common_name = species_mapping.get(scientific_name, "Ukjent")
 
             for row in rows:
-                false_positives.append({
+                false_positive_detections.append({
                     "id": row[0],
-                    "timestamp": row[1],
-                    "scientific_name": row[2],
-                    "common_name": species_mapping.get(row[2], "Ukjent"),
-                    "detections": len(false_positive_ids)
+                    "timestamp": calculate_offset_time(row[1], row[2])[11:],
+                    "confidence": row[3]
                 })
             total_detections = len(rows)
 
@@ -596,12 +658,18 @@ async def species_detections_admin_archive(
             "request": request,
             "date": date,
             "scientific_name": scientific_name,
-            "false_positives": false_positives,
+            "common_name": common_name,
+            "false_positive_detections": false_positive_detections,
             "total_detections": total_detections
         })
 
     # Hvis bekreftelse er gitt, flytt dataene
-    if false_positive_ids:
+    if archive_detections:
+        print(f"/species_detections_admin/archive")
+        print(f"confirm={confirm}")
+        print(f"archive_detections={archive_detections}")
+
+
         query_insert = '''
             INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
             SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
@@ -612,7 +680,7 @@ async def species_detections_admin_archive(
             DELETE FROM detections
             WHERE id = ?
         '''
-        for detection_id in false_positive_ids:
+        for detection_id in archive_detections:
             execute_db(query_insert, (detection_id,))
             execute_db(query_delete, (detection_id,))
 

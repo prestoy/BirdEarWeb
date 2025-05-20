@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Administrer deteksjoner</h1>
-<h2>{{ common_name | capitalize }} <em>{{ scientific_name }}</em> {{ date | datetimeformat('%-d. %B %Y') }}</h2>
+<h2>{{ common_name | capitalize }} <em>{{ scientific_name }}</em> {{ date | datetimeformat('%-d. %B %Y') }}, {{ total_detections }} deteksjoner </h2>
 
 <!-- Lenker for navigasjon -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -40,7 +40,7 @@
                     </audio>
                     <div style="margin-top: 10px; text-align: right;">
                         <label>
-                            <input type="checkbox" name="false_positive_ids" value="{{ detection.id }}" class="checkbox">
+                            <input type="checkbox" name="archive_detections" value="{{ detection.id }}" class="checkbox">
                             Merk som falsk positiv
                         </label>
                     </div>
@@ -61,7 +61,7 @@
 <script>
     // Hent referanser til knappen og sjekkboksene
     const archiveButton = document.getElementById("archive-button");
-    const checkboxes = document.querySelectorAll("input[name='false_positive_ids']");
+    const checkboxes = document.querySelectorAll("input[name='archive_detections']");
     const selectAllButton = document.getElementById("select-all");
 
     // Funksjon for å oppdatere knappens status

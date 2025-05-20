@@ -3,7 +3,7 @@
 {% block title %}Administrer arter{% endblock %}
 
 {% block content %}
-<h1>Administrer arter detektert {{ date | datetimeformat('%-d. %B %Y') }}</h1>
+<h1>Administrer {{ species_list | length }} arter detektert {{ date | datetimeformat('%-d. %B %Y') }}</h1>
 
 <!-- Lenker for navigasjon -->
 <div style="display: flex; justify-content: space-between; align-items: center;">
