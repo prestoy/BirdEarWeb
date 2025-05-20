@@ -453,7 +453,7 @@ async def species_admin(request: Request, date: str):
 @app.post("/species_admin/archive")
 async def species_admin_archive(
     request: Request,
-    archive_species_ids: list[str] = Form(...),
+    archive_species: list[str] = Form(...),
     date: str = Form(...),
     confirm: Optional[bool] = Form(False)
 ):
@@ -467,7 +467,7 @@ async def species_admin_archive(
         total_detections = 0
 
         # Hent detaljer for hver art
-        for scientific_name in archive_species_ids:
+        for scientific_name in archive_species:
             query = '''
                 SELECT id
                 FROM detections
@@ -485,6 +485,9 @@ async def species_admin_archive(
                 "common_name": common_name,
                 "detections": len(rows)
             })
+        
+        print(f"Request: {request}")
+        print(f"Species IDs to archive: {species_list}")
 
         # Returner bekreftelsesdialogen
         return templates.TemplateResponse("confirmation_prompt.html", {
@@ -495,7 +498,7 @@ async def species_admin_archive(
         })
 
     # Hvis bekreftelse er gitt, flytt dataene
-    for scientific_name in archive_species_ids:
+    for scientific_name in archive_species:
         query_insert = '''
             INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
             SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time

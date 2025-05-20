@@ -19,35 +19,34 @@
 
     <!-- Liste over arter -->
     <div class="detections-list" style="width: 100%;">
-            <input type="hidden" name="date" value="{{ date }}">
-            {% for species in species_list %}
-            <div class="species-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; width: 100%;">
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <div>
-                        <p style="margin: 0;"><strong>{{ species.common_name | capitalize }}</strong> <em>{{ species.scientific_name }}</em></p>
-                        <p style="margin: 0;">Totalt antall deteksjoner: {{ species.total_detections }}</p>
-                        <p style="margin: 0;">Konfidens-median: {{ species.confidence_median | round(2) }}</p>
-                    </div>
-                    <div style="text-align: right;">
-                        <label>
-                            <input type="checkbox" name="archive_species_ids" value="{{ species.scientific_name }}" class="checkbox">
-                            Arkiver dagens deteksjoner for arten
-                        </label>
-                    </div>
+        <input type="hidden" name="date" value="{{ date }}">
+        {% for species in species_list %}
+        <div class="species-item" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <p style="margin: 0;"><strong>{{ species.common_name | capitalize }}</strong> <em>{{ species.scientific_name }}</em></p>
+                    <p style="margin: 0;">Totalt antall deteksjoner: {{ species.total_detections }}</p>
+                    <p style="margin: 0;">Konfidens-median: {{ species.confidence_median | round(2) }}</p>
+                </div>
+                <div style="text-align: right;">
+                    <label>
+                        <input type="checkbox" name="archive_species" value="{{ species.scientific_name }}" class="checkbox">
+                        Arkiver dagens deteksjoner for arten
+                    </label>
                 </div>
             </div>
-            {% endfor %}
+        </div>
+        {% endfor %}
 </form>
 </div>
 
 <script>
     const archiveButton = document.getElementById("archive-button");
-    const checkboxes = document.querySelectorAll("input[name='archive_species_ids']");
+    const checkboxes = document.querySelectorAll("input[name='archive_species']");
     const selectAllButton = document.getElementById("select-all");
 
     // Oppdater knappens status basert på om noen sjekkbokser er merket
     function updateButtonState() {
-        console.log("Oppdaterer knappens status...");
         const anyChecked = Array.from(checkboxes).some(checkbox => checkbox.checked);
         archiveButton.disabled = !anyChecked;
         console.log("Knappen er nå " + (archiveButton.disabled ? "deaktivert" : "aktivert"));

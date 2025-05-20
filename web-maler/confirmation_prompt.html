@@ -7,8 +7,28 @@
 <p>
     Du har angitt at følgende <strong>deteksjoner på datoen {{ date | datetimeformat('%-d. %B %Y') }}</strong> skal arkiveres som falske positiver:
 </p>
-{% if species_list %}
-    <form method="post" action="/species_admin/archive?confirm=true">
+{% if species_list is defined and species_list|length > 0 %}
+    <form method="post" action="/species_admin/archive">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="confirm" value="true">
+        {% for species in species_list %}
+            <input type="hidden" name="archive_species" value="{{ species.scientific_name }}">
+            <ul>
+                <li>
+                    {{ species.common_name }} <em>{{ species.scientific_name }}</em>: {{ species.detections }} deteksjoner
+                </li>
+            </ul>
+        {% endfor %}
+        <p>
+            Totalt {{ total_detections }} deteksjoner vil bli arkivert. Etter arkiveringen vil disse artene ikke lenger vises som deteksjoner på denne datoen.
+        </p>
+        <div style="display: flex; justify-content: space-between; margin-top: 20px;">
+            <button type="submit" style="background-color: green; color: white; padding: 10px 20px;">Bekreft</button>
+            <a href="/species_detections_admin?date={{ date }}&species={{ scientific_name }}" style="background-color: red; color: white; text-decoration: none; padding: 10px 20px; text-align: center;">Avbryt</a>
+        </div>
+    </form>
+{% elif false_positives is defined and false_positives|length > 0 %}
+    <form method="post" action="/species_detections_admin/archive">
         <input type="hidden" name="date" value="{{ date }}">
         {% for species in species_list %}
             <input type="hidden" name="archive_species_ids" value="{{ species.scientific_name }}">
@@ -20,25 +40,6 @@
                         <li>ID: {{ detail.id }}, Location ID: {{ detail.location_id }}</li>
                         {% endfor %}
                     </ul>
-                </li>
-            </ul>
-        {% endfor %}
-        <p>
-            Totalt {{ total_detections }} deteksjoner vil bli arkivert. Etter arkiveringen vil disse artene ikke lenger vises som deteksjoner på denne datoen.
-        </p>
-        <div style="display: flex; justify-content: space-between; margin-top: 20px;">
-            <button type="submit" style="background-color: green; color: white; padding: 10px 20px;">Bekreft</button>
-            <a href="/species_admin?date={{ date }}" style="background-color: red; color: white; text-decoration: none; padding: 10px 20px; text-align: center;">Avbryt</a>
-        </div>
-    </form>
-{% elif false_positives %}
-    <form method="post" action="/species_detections_admin/archive?confirm=true">
-        <input type="hidden" name="date" value="{{ date }}">
-        {% for species in false_positives %}
-            <input type="hidden" name="archive_species_ids" value="{{ species.scientific_name }}">
-            <ul>
-                <li>
-                    {{ species.common_name }} <em>{{ species.scientific_name }}</em>: {{ species.detections }} deteksjoner
                 </li>
             </ul>
         {% endfor %}
