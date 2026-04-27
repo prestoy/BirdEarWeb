@@ -17,15 +17,16 @@ from bcrypt import checkpw
 from typing import Optional
 import re
 
-# Sett norsk locale
-locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
-
 # Les config.yaml
 def load_config(config_path="config.yaml"):
     with open(config_path, "r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
 config = load_config()
+
+# Sett locale fra config.yaml
+#locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
+locale.setlocale(locale.LC_TIME, config.get("locale", ""))
 
 app = FastAPI()
 
