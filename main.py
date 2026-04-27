@@ -207,8 +207,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
     if end_weekday < 6:
         calendar.extend([None] * (6 - end_weekday))
 
-    return templates.TemplateResponse("calendar.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "calendar.html", {
         "year": year,
         "month": month,
         "calendar": calendar,
@@ -242,8 +241,7 @@ async def show_detections(request: Request, date: str, min_conf: float = 0.8):
     # Sorter etter totalt antall registreringer i synkende rekkefølge
     species_data.sort(key=lambda x: x["total_count"], reverse=True)
 
-    return templates.TemplateResponse("show_detections.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "show_detections.html", {
         "date": date,
         "species_data": species_data,
         "min_conf": min_conf,
@@ -328,8 +326,7 @@ async def species_details(
     # Hent norsk navn for arten
     common_name = species_mapping.get(scientific_name, "Ukjent")
 
-    return templates.TemplateResponse("species_day_details.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "species_day_details.html", {
         "scientific_name": scientific_name,
         "common_name": common_name,
         "date": date,
@@ -481,8 +478,7 @@ async def species_admin(request: Request, date: str):
     species_list = get_species_list(date)
 
     # Returner HTML-siden med listen over arter
-    return templates.TemplateResponse('species_admin.html', {
-        "request": request,
+    return templates.TemplateResponse(request, 'species_admin.html', {
         "date": date,
         "species_list": species_list
     })
@@ -527,8 +523,7 @@ async def species_admin_archive(
         print(f"Species IDs to archive: {species_list}")
 
         # Returner bekreftelsesdialogen
-        return templates.TemplateResponse("confirmation_prompt.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "confirmation_prompt.html", {
             "date": date,
             "species_list": species_list,
             "total_detections": total_detections
@@ -585,8 +580,7 @@ async def species_detections_admin(
     total_detections = len(rows)
 
     common_name = species_mapping.get(scientific_name, "Ukjent")
-    return templates.TemplateResponse("species_detections_admin.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "species_detections_admin.html", {
         "scientific_name": scientific_name,
         "common_name": common_name,
         "date": date,
@@ -655,8 +649,7 @@ async def species_detections_admin_archive(
             total_detections = len(rows)
 
         # Returner bekreftelsesdialogen
-        return templates.TemplateResponse("confirmation_prompt.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "confirmation_prompt.html", {
             "date": date,
             "scientific_name": scientific_name,
             "common_name": common_name,
