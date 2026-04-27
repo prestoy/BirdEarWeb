@@ -1,2 +1,4 @@
 .env/
 .env/pyvenv.cfg
+config.yaml
+config.yaml

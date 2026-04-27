@@ -76,6 +76,22 @@ secret_algorithm: "HS256"
 access_token_expire_seconds: 86400    # 1 dag
 ```
 
+### 4. Sett opp locale
+
+Sjekk om norsk _locale_ er installert
+
+```
+locale -a | grep nb
+```
+
+Installer locale hvis det ikke finnes.
+
+```
+sudo locale-gen nb_NO.UTF-8
+sudo update-locale
+```
+
+
 ### 4. Sett opp adminpassord
 
 Generer en bcrypt-hash av passordet ditt og lagre det i `pwd_hash.txt`:

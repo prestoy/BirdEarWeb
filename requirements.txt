@@ -1,4 +1,4 @@
 bcrypt==4.3.0
 Jinja2==3.1.6
-jose==1.0.0
+python-jose==3.3.0
 MarkupSafe==3.0.2
