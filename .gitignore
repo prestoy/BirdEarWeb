@@ -1,8 +1,2 @@
 .env/
-*.pyc
-__pycache__/
-__pycache__/*.pyc
-gedit/
-*gedit*
-config*
-*.yaml
+.env/pyvenv.cfg
