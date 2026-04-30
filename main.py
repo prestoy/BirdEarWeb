@@ -1,15 +1,12 @@
-import yaml  # For å lese config.yaml
+import yaml
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse  # Legg til denne importen
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from hashlib import sha256
 from datetime import datetime, timedelta
-import sqlite3
+import httpx
 import csv
-from collections import defaultdict
 import os
 import locale
 import time
@@ -24,37 +21,25 @@ def load_config(config_path="config.yaml"):
 
 config = load_config()
 
-# Sett locale fra config.yaml
-#locale.setlocale(locale.LC_TIME, "nb_NO.UTF-8")
 locale.setlocale(locale.LC_TIME, config.get("locale", ""))
 
 app = FastAPI()
 
-# Mount statiske filer (for CSS, JS, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Mount lydfiler fra audio-path i config.yaml
-#app.mount("/static/audio", StaticFiles(directory=config["audio-path"]), name="audio")
 app.mount("/audio", StaticFiles(directory=config["audio-path"]), name="audio")
 
-# Sett opp Jinja2-templates
 templates = Jinja2Templates(directory="web-maler")
 
-# Legg til Jinja2-filter for datoformatering
 def datetimeformat(value, format='%d. %B %Y %H:%M:%S'):
     try:
-        # Håndter ISO 8601-tidsstempler med mikrosekunder
         formatted_date = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f').strftime(format)
     except ValueError:
         try:
-            # Håndter ISO 8601-tidsstempler uten mikrosekunder
             formatted_date = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S').strftime(format)
         except ValueError:
             try:
-                # Håndter tidsstempler uten 'T' (f.eks. 'YYYY-MM-DD HH:MM:SS')
                 formatted_date = datetime.strptime(value, '%Y-%m-%d %H:%M:%S').strftime(format)
             except ValueError:
-                # Håndter datoer uten tid (f.eks. 'YYYY-MM-DD')
                 formatted_date = datetime.strptime(value, '%Y-%m-%d').strftime(format)
     return formatted_date
 
@@ -78,120 +63,136 @@ def load_species_mapping(csv_path):
 
 species_mapping = load_species_mapping(config["species-map"])
 
-def get_db_connection():
-    """
-    Opprett en tilkobling til databasen i read-only-modus.
-    """
-    db_path = config["db-path"]
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    return conn
+# ----------------------------------------------------------------
+# API-klient
+# ----------------------------------------------------------------
 
-def get_db_connection_rw():
-    """
-    Opprett en tilkobling til databasen i read-write-modus.
-    """
-    db_path = config["db-path"]
-    conn = sqlite3.connect(db_path)  # Fjern "mode=ro" for å tillate skriving
-    return conn
+API_URL = config["api-url"]
 
-def fetch_from_db(query, params=()):
-    """
-    Utfør en SQL-spørring og returner resultatene.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    results = cursor.fetchall()
-    conn.close()
-    return results
+def api_get(path: str, params: dict = None):
+    """Utfør GET-forespørsel mot BirdMic API."""
+    try:
+        response = httpx.get(f"{API_URL}{path}", params=params, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"API-feil: {e}")
 
-def execute_db(query, params=()):
-    """
-    Utfør en SQL-spørring som krever skrivetilgang.
-    """
-    conn = get_db_connection_rw()
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    conn.commit()  # Husk å lagre endringene
-    conn.close()
+def api_post(path: str, json: dict = None):
+    """Utfør POST-forespørsel mot BirdMic API."""
+    try:
+        response = httpx.post(f"{API_URL}{path}", json=json, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"API-feil: {e}")
 
-# Hjelpefunksjon: Hent dager med detections for en gitt måned
+# ----------------------------------------------------------------
+# Hjelpefunksjoner (kaller API)
+# ----------------------------------------------------------------
+
 def get_detection_days(year, month):
-    start_date = f"{year}-{month:02d}-01"
-    end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=31)).replace(day=1).strftime("%Y-%m-%d")
-    
-    query = '''
-        SELECT DISTINCT DATE(timestamp) as detection_date
-        FROM detections
-        WHERE DATE(timestamp) BETWEEN ? AND ?
-    '''
-    results = fetch_from_db(query, (start_date, end_date))
-    return [row[0] for row in results]
+    return api_get("/detections/days", {"year": year, "month": month})
 
-
-# Hjelpefunksjon: Hent detections for en gitt dato
 def get_detections_for_date(date, min_conf):
-    query = '''
-        SELECT scientific_name, strftime('%H', timestamp) as hour
-        FROM detections
-        WHERE DATE(timestamp) = ? AND confidence >= ?
-    '''
-    results = fetch_from_db(query, (date, min_conf))
-    return [(row[0], int(row[1])) for row in results]
+    rows = api_get("/detections/by_date", {"date": date, "min_conf": min_conf})
+    return [(row["scientific_name"], row["hour"]) for row in rows]
 
-
-# Hjelpefunksjon: Hent detaljer for en art på en gitt dato
-def get_species_details(date, scientific_name, hour=None):
+def get_species_details(date, scientific_name, hour=None, min_conf=0.0):
+    params = {"date": date, "scientific_name": scientific_name, "min_conf": min_conf}
     if hour is not None:
-        query = '''
-            SELECT DISTINCT timestamp as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time
-            FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ?
-            ORDER BY formatted_timestamp
-        '''
-        params = (date, scientific_name, f"{hour:02d}")
+        params["hour"] = hour
+    return api_get("/detections/species_details", params)
+
+def get_species_list(date):
+    rows = api_get("/detections/species_list", {"date": date})
+    from collections import defaultdict
+    species_data = defaultdict(list)
+    for row in rows:
+        species_data[row["scientific_name"]].append(row["confidence"])
+    species_list = []
+    for scientific_name, confidences in species_data.items():
+        total_detections = len(confidences)
+        confidence_median = calculate_median(confidences)
+        common_name = species_mapping.get(scientific_name, "Ukjent")
+        species_list.append({
+            "scientific_name": scientific_name,
+            "common_name": common_name,
+            "total_detections": total_detections,
+            "confidence_median": confidence_median
+        })
+    species_list.sort(key=lambda x: x["total_detections"], reverse=True)
+    return species_list
+
+# ----------------------------------------------------------------
+# Autentisering
+# ----------------------------------------------------------------
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
+    return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
+
+def verify_token(token: str):
+    try:
+        payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
+
+def verify_password(password: str):
+    with open(config["password_hash_file"], "r") as file:
+        stored_hash = file.read().strip().encode("utf-8")
+    return checkpw(password.encode("utf-8"), stored_hash)
+
+# ----------------------------------------------------------------
+# Hjelpefunksjoner
+# ----------------------------------------------------------------
+
+def calculate_median(values):
+    values = sorted(values)
+    n = len(values)
+    if n == 0:
+        return None
+    if n % 2 == 1:
+        return values[n // 2]
     else:
-        query = '''
-            SELECT DISTINCT timestamp as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time
-            FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ?
-            ORDER BY formatted_timestamp
-        '''
-        params = (date, scientific_name)
+        return (values[n // 2 - 1] + values[n // 2]) / 2
 
-    return fetch_from_db(query, params)
+def calculate_offset_time(timestamp_str, offset):
+    pattern = r"^(\d{4}-\d{2}-\d{2}).(\d{2}:\d{2}:\d{2})$"
+    match = re.match(pattern, timestamp_str)
+    if not match:
+        raise ValueError(f"Invalid timestamp format: {timestamp_str}")
+    date_part, time_part = match.groups()
+    timestamp = datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M:%S")
+    if isinstance(offset, (int, float)):
+        offset = timedelta(seconds=offset)
+    return (timestamp + offset).strftime("%Y-%m-%d %H:%M:%S")
 
+# ----------------------------------------------------------------
+# Ruter
+# ----------------------------------------------------------------
 
-# "/" - Vis månedskalender
 @app.get("/", response_class=HTMLResponse)
 async def calendar_view(request: Request, year: int = None, month: int = None):
     if year is None or month is None:
         today = datetime.today()
         year, month = today.year, today.month
 
-    # Beregn forrige og neste måned
     first_day = datetime(year, month, 1)
     prev_month = (first_day - timedelta(days=1)).replace(day=1)
     next_month = (first_day + timedelta(days=31)).replace(day=1)
 
-    # Hent dager med detections
     detection_days = get_detection_days(year, month)
 
-    # Generer kalenderdata
     last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
     calendar = []
     current_day = first_day
 
-    # Juster for ukens første dag
-    start_weekday = first_day.weekday()  # 0 = mandag, 6 = søndag
+    start_weekday = first_day.weekday()
     if start_weekday > 0:
-        calendar.extend([None] * start_weekday)  # Fyll tomme celler før månedens første dag
+        calendar.extend([None] * start_weekday)
 
     while current_day <= last_day:
         day_str = current_day.strftime("%Y-%m-%d")
@@ -202,8 +203,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
         })
         current_day += timedelta(days=1)
 
-    # Fyll tomme celler etter månedens siste dag
-    end_weekday = last_day.weekday()  # 0 = mandag, 6 = søndag
+    end_weekday = last_day.weekday()
     if end_weekday < 6:
         calendar.extend([None] * (6 - end_weekday))
 
@@ -216,17 +216,16 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
         "title": "Dager med lydregistrering av fugler"
     })
 
-# "/show_detections" - Vis arter for en gitt dato
+
 @app.get("/show_detections", response_class=HTMLResponse)
 async def show_detections(request: Request, date: str, min_conf: float = 0.8):
+    from collections import defaultdict
     detections = get_detections_for_date(date, min_conf)
 
-    # Organiser detections etter art og time
     species_histogram = defaultdict(lambda: [0] * 24)
     for scientific_name, hour in detections:
         species_histogram[scientific_name][hour] += 1
 
-    # Map vitenskapelige navn til norske navn og sorter etter totalt antall registreringer
     species_data = []
     for scientific_name, histogram in species_histogram.items():
         common_name = species_mapping.get(scientific_name, "Ukjent")
@@ -238,7 +237,6 @@ async def show_detections(request: Request, date: str, min_conf: float = 0.8):
             "total_count": total_count
         })
 
-    # Sorter etter totalt antall registreringer i synkende rekkefølge
     species_data.sort(key=lambda x: x["total_count"], reverse=True)
 
     return templates.TemplateResponse(request, "show_detections.html", {
@@ -248,82 +246,38 @@ async def show_detections(request: Request, date: str, min_conf: float = 0.8):
         "title": f"Deteksjoner for {date}"
     })
 
-# "/species_details" - Vis registreringstidspunkter for en art på en gitt dato, med valgfri timefilter
+
 @app.get("/species_details", response_class=HTMLResponse)
 async def species_details(
     request: Request,
     scientific_name: str,
     date: str,
     hour: int = None,
-    min_conf: float = 0.0  # Standardverdi for confidence-nivå
+    min_conf: float = 0.0
 ):
-    # Konverter understrek til mellomrom
     scientific_name = scientific_name.replace("_", " ")
+    rows = get_species_details(date, scientific_name, hour, min_conf)
 
-    # Hent data fra databasen
-    if hour is not None:
-        query = '''
-            SELECT DISTINCT timestamp as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time, 
-                            confidence
-            FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ? AND strftime('%H', timestamp) = ? AND confidence >= ?
-            ORDER BY formatted_timestamp
-        '''
-        params = (date, scientific_name, f"{hour:02d}", min_conf)
-    else:
-        query = '''
-            SELECT DISTINCT timestamp as formatted_timestamp, 
-                            recording, 
-                            start_time, 
-                            end_time, 
-                            confidence
-            FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ? AND confidence >= ?
-            ORDER BY formatted_timestamp
-        '''
-        params = (date, scientific_name, min_conf)
-
-    rows = fetch_from_db(query, params)
-
-    # Generer detections-listen med sjekk for lydfil
     detections = []
     for row in rows:
-        formatted_timestamp = row[0]
-        recording = row[1]
-        start_time = row[2]
-        end_time = row[3]
-        confidence = row[4]
-
-        # Sjekk om lydfilen eksisterer
-        audio_file_path = os.path.join(config["audio-path"], recording) if recording else None
+        audio_file_path = os.path.join(config["audio-path"], row["recording"]) if row["recording"] else None
         if audio_file_path and os.path.isfile(audio_file_path):
-            audio_file = f"/audio/{recording}"
+            audio_file = f"/audio/{row['recording']}"
         else:
             audio_file = None
-            recording = None
 
-        # Legg til tidsrom kun hvis start_time og end_time er tilgjengelige
-        if start_time is not None and end_time is not None:
-            start_time_display = round(start_time, 1)
-            end_time_display = round(end_time, 1)
-        else:
-            start_time_display = None
-            end_time_display = None
+        start_time_display = round(row["start_time"], 1) if row["start_time"] is not None else None
+        end_time_display = round(row["end_time"], 1) if row["end_time"] is not None else None
 
         detections.append({
-            "timestamp": row[0],
-            "recording": row[1],
+            "timestamp": row["timestamp"],
+            "recording": row["recording"],
             "audio_file": audio_file,
             "start_time": start_time_display,
             "end_time": end_time_display,
-            "confidence": row[4] if row[4] is not None else 0.0  # Sett standardverdi
-            #"confidence": round(confidence, 2)
+            "confidence": row["confidence"] if row["confidence"] is not None else 0.0
         })
 
-    # Hent norsk navn for arten
     common_name = species_mapping.get(scientific_name, "Ukjent")
 
     return templates.TemplateResponse(request, "species_day_details.html", {
@@ -337,7 +291,7 @@ async def species_details(
         "title": f"Detaljer for {common_name} ({scientific_name})"
     })
 
-# Rute for passordautentisering
+
 @app.post("/authenticate")
 async def authenticate(
     password: str = Form(...),
@@ -360,128 +314,15 @@ async def authenticate(
     else:
         raise HTTPException(status_code=401, detail="Feil passord")
 
-# Funksjon for å generere JWT-token
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
-    return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
-
-# Funksjon for å verifisere JWT-token
-def verify_token(token: str):
-    try:
-        payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
-        return payload
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
-
-# Funksjon for å verifisere passord med bcrypt
-def verify_password(password: str):
-    with open(config["password_hash_file"], "r") as file:
-        stored_hash = file.read().strip().encode("utf-8")  # Les hashen og konverter til bytes
-    return checkpw(password.encode("utf-8"), stored_hash)  # Sammenlign passordet med hashen
-
-def calculate_median(values):
-    """
-    Beregn medianen av en liste med verdier.
-    """
-    values = sorted(values)
-    n = len(values)
-    if n == 0:
-        return None
-    if n % 2 == 1:
-        return values[n // 2]
-    else:
-        return (values[n // 2 - 1] + values[n // 2]) / 2
-
-def calculate_offset_time(timestamp_str, offset):
-    """
-    Funksjon for å legge til offset-tid til timestamp i tekstformat "%Y-%m-%d[?]%H:%M:%S".
-    Wildcard kan være hvilken som helst enkelt karakter.
-    """
-
-    # Regex for å validere og trekke ut dato og klokkeslett
-    pattern = r"^(\d{4}-\d{2}-\d{2}).(\d{2}:\d{2}:\d{2})$"
-    match = re.match(pattern, timestamp_str)
-
-    if not match:
-        raise ValueError(f"Invalid timestamp format: {timestamp_str}. Expected format: '%Y-%m-%d[?]%H:%M:%S'")
-
-    # Ekstraher dato og klokkeslett fra timestamp_str
-    date_part, time_part = match.groups()
-    full_timestamp = f"{date_part} {time_part}"
-
-    # Konverter til datetime-objekt
-    try:
-        timestamp = datetime.strptime(full_timestamp, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        raise ValueError(f"Invalid timestamp format after extraction: {full_timestamp}. Expected format: '%Y-%m-%d %H:%M:%S'")
-
-    # Konverter offset til timedelta hvis det ikke allerede er det
-    if isinstance(offset, (int, float)):
-        offset = timedelta(seconds=offset)
-    elif not isinstance(offset, timedelta):
-        raise TypeError("The 'offset' parameter must be a 'timedelta' object or a numeric value representing seconds.")
-
-    # Legg til offset
-    offset_timestamp = timestamp + offset
-
-    # Returner klokkeslettet som HH:MM:SS
-    return offset_timestamp.strftime("%Y-%m-%d %H:%M:%S")
-
-def get_species_list(date):
-    """
-    Hent liste over arter detektert på en gitt dato.
-    Returnerer en liste med ordbøker som inneholder:
-    - scientific_name: Vitenskapelig navn
-    - common_name: Norsk navn
-    - total_detections: Totalt antall deteksjoner
-    - confidence_median: Median av konfidensverdier
-    """
-    # Hent alle deteksjoner for datoen
-    query = '''
-        SELECT scientific_name, confidence
-        FROM detections
-        WHERE DATE(timestamp) = ?
-    '''
-    rows = fetch_from_db(query, (date,))
-
-    # Organiser data etter art
-    species_data = defaultdict(list)
-    for scientific_name, confidence in rows:
-        species_data[scientific_name].append(confidence)
-
-    # Generer liste over arter med beregnet median
-    species_list = []
-    for scientific_name, confidences in species_data.items():
-        total_detections = len(confidences)
-        confidence_median = calculate_median(confidences)
-        common_name = species_mapping.get(scientific_name, "Ukjent")
-
-        species_list.append({
-            "scientific_name": scientific_name,
-            "common_name": common_name,
-            "total_detections": total_detections,
-            "confidence_median": confidence_median
-        })
-
-    # Sorter etter totalt antall deteksjoner i synkende rekkefølge
-    species_list.sort(key=lambda x: x["total_detections"], reverse=True)
-
-    return species_list
 
 @app.get("/species_admin", response_class=HTMLResponse)
 async def species_admin(request: Request, date: str):
-    """
-    Hent liste over arter for en gitt dato og vis administrasjonssiden.
-    """
-    # Hent liste over arter for gitt dato
     species_list = get_species_list(date)
-
-    # Returner HTML-siden med listen over arter
     return templates.TemplateResponse(request, 'species_admin.html', {
         "date": date,
         "species_list": species_list
     })
+
 
 @app.post("/species_admin/archive")
 async def species_admin_archive(
@@ -490,62 +331,31 @@ async def species_admin_archive(
     date: str = Form(...),
     confirm: Optional[bool] = Form(False)
 ):
-    """
-    Arkiver valgte arter for en gitt dato.
-    Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog.
-    """
-    # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
     if not confirm:
         species_list = []
         total_detections = 0
 
-        # Hent detaljer for hver art
         for scientific_name in archive_species:
-            query = '''
-                SELECT id
-                FROM detections
-                WHERE DATE(timestamp) = ? AND scientific_name = ?
-            '''
-            rows = fetch_from_db(query, (date, scientific_name))
-            total_detections += len(rows)
-
-            # Hent norsk navn for arten
+            rows = api_get("/detections/admin", {"date": date, "scientific_name": scientific_name})
             common_name = species_mapping.get(scientific_name, "Ukjent")
-
-            # Legg til data for bekreftelsesdialogen
             species_list.append({
                 "scientific_name": scientific_name,
                 "common_name": common_name,
                 "detections": len(rows)
             })
-        
-        print(f"Request: {request}")
-        print(f"Species IDs to archive: {species_list}")
+            total_detections += len(rows)
 
-        # Returner bekreftelsesdialogen
         return templates.TemplateResponse(request, "confirmation_prompt.html", {
             "date": date,
             "species_list": species_list,
             "total_detections": total_detections
         })
 
-    # Hvis bekreftelse er gitt, flytt dataene
     for scientific_name in archive_species:
-        query_insert = '''
-            INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
-            SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
-            FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ?
-        '''
-        query_delete = '''
-            DELETE FROM detections
-            WHERE DATE(timestamp) = ? AND scientific_name = ?
-        '''
-        execute_db(query_insert, (date, scientific_name))
-        execute_db(query_delete, (date, scientific_name))
+        api_post("/detections/archive_species", {"date": date, "scientific_name": scientific_name})
 
-    # Returner en bekreftelse på at dataene er arkivert
     return RedirectResponse(url=f"/species_admin?date={date}", status_code=303)
+
 
 @app.get("/species_detections_admin", response_class=HTMLResponse)
 async def species_detections_admin(
@@ -553,64 +363,18 @@ async def species_detections_admin(
     scientific_name: str,
     date: str
 ):
-    """
-    Hent deteksjoner for en art på en gitt dato, med mulighet for filtrering etter konfidens.
-    """
-    query = '''
-        SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
-        FROM detections
-        WHERE DATE(timestamp) = ? AND scientific_name = ?
-    '''
-    params = [date, scientific_name]
-
-    rows = fetch_from_db(query, params)
-    detections = []
-    for row in rows:
-        detections.append({
-            "id": row[0],
-            "location_id": row[1],
-            "timestamp": row[2],
-            "scientific_name": row[3],
-            "confidence": row[4] if row[4] is not None else None,  # Sett standardverdi
-            "recording": row[5],
-            "start_time": row[6],
-            "end_time": row[7]
-        })
-    
-    total_detections = len(rows)
-
+    rows = api_get("/detections/admin", {"date": date, "scientific_name": scientific_name})
     common_name = species_mapping.get(scientific_name, "Ukjent")
+
     return templates.TemplateResponse(request, "species_detections_admin.html", {
         "scientific_name": scientific_name,
         "common_name": common_name,
         "date": date,
-        "detections": detections,
+        "detections": rows,
         "confidence_threshold": 1.0,
-        "total_detections": total_detections
+        "total_detections": len(rows)
     })
 
-@app.get("/species_detections_admin/archive")
-async def species_detections_admin_archive_get(
-    scientific_name: str,
-    date: str,
-    archive_detections: Optional[list[str]] = None,
-    confirm: Optional[bool] = False
-):
-    """
-    Håndter GET-forespørsel for å omdirigere brukeren tilbake til species_detections_admin.
-    """
-    params = {
-        "scientific_name": scientific_name,
-        "date": date
-    }
-
-    # Legg til archive_detections og confirm bare hvis de er sendt inn
-    if archive_detections:
-        params["archive_detections"] = archive_detections
-    if confirm:
-        params["confirm"] = confirm
-
-    return RedirectResponse(url=params, status_code=303)
 
 @app.post("/species_detections_admin/archive")
 async def species_detections_admin_archive(
@@ -620,35 +384,22 @@ async def species_detections_admin_archive(
     archive_detections: Optional[list[str]] = Form(None),
     confirm: Optional[bool] = Form(False)
 ):
-    """
-    Flytt spesifikke deteksjoner til false_positives-tabellen etter bekreftelse.
-    """
-    # Hvis bekreftelse ikke er gitt, vis bekreftelsesdialog
     if not confirm:
         false_positive_detections = []
         total_detections = 0
+        common_name = species_mapping.get(scientific_name, "Ukjent")
 
-        # Hent detaljer for de valgte deteksjonene
         if archive_detections:
-            query = '''
-                SELECT id, timestamp, start_time, confidence
-                FROM detections
-                WHERE id IN ({})
-            '''.format(",".join("?" for _ in archive_detections))
-            rows = fetch_from_db(query, archive_detections)
-
-            # Hent norsk navn for arten
-            common_name = species_mapping.get(scientific_name, "Ukjent")
-
+            ids = [int(i) for i in archive_detections]
+            rows = api_get("/detections/by_ids", {"ids": ids})
             for row in rows:
                 false_positive_detections.append({
-                    "id": row[0],
-                    "timestamp": calculate_offset_time(row[1], row[2])[11:],
-                    "confidence": row[3]
+                    "id": row["id"],
+                    "timestamp": calculate_offset_time(row["timestamp"], row["start_time"])[11:],
+                    "confidence": row["confidence"]
                 })
             total_detections = len(rows)
 
-        # Returner bekreftelsesdialogen
         return templates.TemplateResponse(request, "confirmation_prompt.html", {
             "date": date,
             "scientific_name": scientific_name,
@@ -657,28 +408,10 @@ async def species_detections_admin_archive(
             "total_detections": total_detections
         })
 
-    # Hvis bekreftelse er gitt, flytt dataene
     if archive_detections:
-        print(f"/species_detections_admin/archive")
-        print(f"confirm={confirm}")
-        print(f"archive_detections={archive_detections}")
+        ids = [int(i) for i in archive_detections]
+        api_post("/detections/archive_by_ids", {"ids": ids})
 
-
-        query_insert = '''
-            INSERT INTO false_positives (id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time)
-            SELECT id, location_id, timestamp, scientific_name, confidence, recording, start_time, end_time
-            FROM detections
-            WHERE id = ?
-        '''
-        query_delete = '''
-            DELETE FROM detections
-            WHERE id = ?
-        '''
-        for detection_id in archive_detections:
-            execute_db(query_insert, (detection_id,))
-            execute_db(query_delete, (detection_id,))
-
-    # Omdiriger tilbake til species_detections_admin-siden
     return RedirectResponse(
         url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
         status_code=303

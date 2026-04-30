@@ -1,2 +1,8 @@
+# Virtuelt miljø
 .env/
-config*.yaml
+
+# Utdaterte filer
+OLD*
+
+# Lokale konfigureringer
+config*
