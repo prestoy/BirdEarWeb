@@ -46,7 +46,6 @@ def datetimeformat(value, format='%d. %B %Y %H:%M:%S'):
 templates.env.filters['datetimeformat'] = datetimeformat
 templates.env.filters['month_name'] = lambda month: datetime(2000, month, 1).strftime("%B")
 
-# Hjelpefunksjon: Les artsmapping fra CSV
 def load_species_mapping(csv_path):
     mapping = {}
     try:
@@ -63,14 +62,9 @@ def load_species_mapping(csv_path):
 
 species_mapping = load_species_mapping(config["species-map"])
 
-# ----------------------------------------------------------------
-# API-klient
-# ----------------------------------------------------------------
-
 API_URL = config["api-url"]
 
 def api_get(path: str, params: dict = None):
-    """Utfør GET-forespørsel mot BirdMic API."""
     try:
         response = httpx.get(f"{API_URL}{path}", params=params, timeout=10.0)
         response.raise_for_status()
@@ -78,18 +72,13 @@ def api_get(path: str, params: dict = None):
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"API-feil: {e}")
 
-def api_post(path: str, json: dict = None):
-    """Utfør POST-forespørsel mot BirdMic API."""
+def api_post(path: str, json=None, params=None):  # json kan være dict eller list
     try:
-        response = httpx.post(f"{API_URL}{path}", json=json, timeout=10.0)
+        response = httpx.post(f"{API_URL}{path}", json=json, params=params, timeout=10.0)
         response.raise_for_status()
         return response.json()
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"API-feil: {e}")
-
-# ----------------------------------------------------------------
-# Hjelpefunksjoner (kaller API)
-# ----------------------------------------------------------------
 
 def get_detection_days(year, month):
     return api_get("/detections/days", {"year": year, "month": month})
@@ -128,9 +117,15 @@ def get_species_list(date):
 # Autentisering
 # ----------------------------------------------------------------
 
+def _today_midnight_ts() -> float:
+    """Returnerer Unix-tidsstempel for midnatt i natt (lokaltid)."""
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today + timedelta(days=1)
+    return tomorrow.timestamp()
+
 def create_access_token(data: dict):
     to_encode = data.copy()
-    to_encode.update({"exp": time.time() + config["access_token_expire_seconds"]})
+    to_encode.update({"exp": _today_midnight_ts()})
     return jwt.encode(to_encode, config["secret_key"], algorithm=config["secret_algorithm"])
 
 def verify_token(token: str):
@@ -138,16 +133,28 @@ def verify_token(token: str):
         payload = jwt.decode(token, config["secret_key"], algorithms=config["secret_algorithm"])
         return payload
     except JWTError:
-        raise HTTPException(status_code=401, detail="Ugyldig eller utløpt token")
+        return None
+
+def is_authenticated(request: Request) -> bool:
+    token = request.cookies.get("access_token")
+    if not token:
+        return False
+    return verify_token(token) is not None
+
+def require_auth(request: Request, redirect_url: str):
+    """Sjekk autentisering. Returner redirect-response hvis ikke innlogget, ellers None."""
+    if not is_authenticated(request):
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=f"/login?next={quote(redirect_url, safe='')}",
+            status_code=303
+        )
+    return None
 
 def verify_password(password: str):
     with open(config["password_hash_file"], "r") as file:
         stored_hash = file.read().strip().encode("utf-8")
     return checkpw(password.encode("utf-8"), stored_hash)
-
-# ----------------------------------------------------------------
-# Hjelpefunksjoner
-# ----------------------------------------------------------------
 
 def calculate_median(values):
     values = sorted(values)
@@ -171,7 +178,7 @@ def calculate_offset_time(timestamp_str, offset):
     return (timestamp + offset).strftime("%Y-%m-%d %H:%M:%S")
 
 # ----------------------------------------------------------------
-# Ruter
+# Ruter – offentlige
 # ----------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
@@ -292,31 +299,60 @@ async def species_details(
     })
 
 
-@app.post("/authenticate")
-async def authenticate(
+# ----------------------------------------------------------------
+# Innlogging / utlogging
+# ----------------------------------------------------------------
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_get(request: Request, next: str = "/"):
+    if is_authenticated(request):
+        return RedirectResponse(url=next, status_code=303)
+    return templates.TemplateResponse(request, "password_prompt.html", {
+        "next": next,
+        "error": None
+    })
+
+
+@app.post("/login")
+async def login_post(
+    request: Request,
     password: str = Form(...),
-    scientific_name: str = Form(...),
-    date: str = Form(...)
+    next: str = Form("/")
 ):
     if verify_password(password):
         token = create_access_token({"sub": "admin"})
-        response = RedirectResponse(
-            url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
-            status_code=303
-        )
+        seconds_to_midnight = max(1, int(_today_midnight_ts() - time.time()))
+        response = RedirectResponse(url=next, status_code=303)
         response.set_cookie(
             key="access_token",
             value=token,
             httponly=True,
-            max_age=config["access_token_expire_seconds"]
+            max_age=seconds_to_midnight
         )
         return response
     else:
-        raise HTTPException(status_code=401, detail="Feil passord")
+        return templates.TemplateResponse(request, "password_prompt.html", {
+            "next": next,
+            "error": "Feil passord. Prøv igjen."
+        }, status_code=401)
 
+
+@app.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie("access_token")
+    return response
+
+
+# ----------------------------------------------------------------
+# Admin-ruter (krever autentisering)
+# ----------------------------------------------------------------
 
 @app.get("/species_admin", response_class=HTMLResponse)
 async def species_admin(request: Request, date: str):
+    redir = require_auth(request, f"/species_admin?date={date}")
+    if redir:
+        return redir
     species_list = get_species_list(date)
     return templates.TemplateResponse(request, 'species_admin.html', {
         "date": date,
@@ -331,10 +367,13 @@ async def species_admin_archive(
     date: str = Form(...),
     confirm: Optional[bool] = Form(False)
 ):
+    redir = require_auth(request, f"/species_admin?date={date}")
+    if redir:
+        return redir
+
     if not confirm:
         species_list = []
         total_detections = 0
-
         for scientific_name in archive_species:
             rows = api_get("/detections/admin", {"date": date, "scientific_name": scientific_name})
             common_name = species_mapping.get(scientific_name, "Ukjent")
@@ -344,7 +383,6 @@ async def species_admin_archive(
                 "detections": len(rows)
             })
             total_detections += len(rows)
-
         return templates.TemplateResponse(request, "confirmation_prompt.html", {
             "date": date,
             "species_list": species_list,
@@ -352,7 +390,7 @@ async def species_admin_archive(
         })
 
     for scientific_name in archive_species:
-        api_post("/detections/archive_species", {"date": date, "scientific_name": scientific_name})
+        api_post("/detections/archive_species", params={"date": date, "scientific_name": scientific_name})
 
     return RedirectResponse(url=f"/species_admin?date={date}", status_code=303)
 
@@ -363,6 +401,14 @@ async def species_detections_admin(
     scientific_name: str,
     date: str
 ):
+    from urllib.parse import quote
+    redir = require_auth(
+        request,
+        f"/species_detections_admin?scientific_name={quote(scientific_name)}&date={date}"
+    )
+    if redir:
+        return redir
+
     rows = api_get("/detections/admin", {"date": date, "scientific_name": scientific_name})
     common_name = species_mapping.get(scientific_name, "Ukjent")
 
@@ -384,6 +430,14 @@ async def species_detections_admin_archive(
     archive_detections: Optional[list[str]] = Form(None),
     confirm: Optional[bool] = Form(False)
 ):
+    from urllib.parse import quote
+    redir = require_auth(
+        request,
+        f"/species_detections_admin?scientific_name={quote(scientific_name)}&date={date}"
+    )
+    if redir:
+        return redir
+
     if not confirm:
         false_positive_detections = []
         total_detections = 0
@@ -410,7 +464,8 @@ async def species_detections_admin_archive(
 
     if archive_detections:
         ids = [int(i) for i in archive_detections]
-        api_post("/detections/archive_by_ids", {"ids": ids})
+        # Backend forventer en plain JSON-liste som body: [1, 2, 3]
+        api_post("/detections/archive_by_ids", ids)
 
     return RedirectResponse(
         url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
