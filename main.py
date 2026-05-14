@@ -13,6 +13,9 @@ import time
 from bcrypt import checkpw
 from typing import Optional
 import re
+import json as _json
+
+
 
 # Les config.yaml
 def load_config(config_path="config.yaml"):
@@ -178,6 +181,153 @@ def calculate_offset_time(timestamp_str, offset):
     return (timestamp + offset).strftime("%Y-%m-%d %H:%M:%S")
 
 # ----------------------------------------------------------------
+# Filtertabell – lastes inn én gang ved oppstart
+# ----------------------------------------------------------------
+def _load_filter_table() -> dict:
+    path           = config.get("filter-tabell", "kilder/filtertabell.json")
+    overrides_path = config.get("filter-overrides", "kilder/filtertabell_overrides.json")
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            arter = _json.load(f)
+    except FileNotFoundError:
+        return {}
+
+    tabell = {}
+    for art in arter:
+        vit = art["vitenskapelig_navn"]
+        for m in art["maaneder"]:
+            tabell[(vit, m["mnd"])] = {
+                "status":        m["status"],
+                "min_konfidens": m["min_konfidens"],
+                "sone":          m["sone"],
+                "navn":          art["navn"],
+                "total_funn":    art["total_funn"],
+            }
+
+    try:
+        with open(overrides_path, encoding="utf-8") as f:
+            overrides = _json.load(f)
+        for art in overrides:
+            vit = art["vitenskapelig_navn"]
+            if art.get("ekskluder_alle_maaneder", False):
+                for mnd in range(1, 13):
+                    tabell[(vit, mnd)] = {
+                        "status":        "ekskluder",
+                        "min_konfidens": None,
+                        "sone":          "rød",
+                        "navn":          art["navn"],
+                        "total_funn":    0,
+                    }
+            else:
+                for m in art.get("maaneder", []):
+                    tabell[(vit, m["mnd"])] = {
+                        "status":        m["status"],
+                        "min_konfidens": m["min_konfidens"],
+                        "sone":          m["sone"],
+                        "navn":          art["navn"],
+                        "total_funn":    art.get("total_funn", 0),
+                    }
+    except FileNotFoundError:
+        pass
+    except _json.JSONDecodeError as e:
+        print(f"[FEIL] overrides.json er ugyldig JSON: {e}")
+    return tabell
+
+# Laster tabellen én gang ved import (samme mønster som species_mapping)
+filter_tabell = _load_filter_table()
+
+def _filter_species(
+    species_histogram: dict,   # {scientific_name: [0]*24}
+    raw_detections: list,      # [(scientific_name, hour, confidence), ...]
+    month: int
+) -> tuple[list, dict]:
+    """
+    Returnerer:
+      - filtered_species_data: liste klar for malen
+      - filter_summary: {totalt_fjernet, arter_ekskludert, arter_justert}
+    """
+    from collections import defaultdict
+
+    # Bygg konfidens-liste per art per time fra rådata
+    conf_by_species = defaultdict(list)
+    for sci, hour, conf in raw_detections:
+        conf_by_species[sci].append((hour, conf))
+
+    filtered = []
+    totalt_fjernet = 0
+    arter_ekskludert = 0
+    arter_justert = 0
+
+    for scientific_name, histogram in species_histogram.items():
+        oppslag = filter_tabell.get((scientific_name, month))
+
+        # Art ikke i filtertabellen → vis med standard histogram, ingen filtrering
+        if oppslag is None:
+            common_name = species_mapping.get(scientific_name, "Ukjent")
+            filtered.append({
+                "scientific_name": scientific_name,
+                "common_name":     common_name,
+                "histogram":       histogram,
+                "total_count":     sum(histogram),
+                "sone":            None,
+                "min_konfidens":   None,
+                "fjernet":         0,
+                "i_tabell":        False,
+            })
+            continue
+
+        # Ekskluder hele arten denne måneden
+        if oppslag["status"] == "ekskluder":
+            totalt_fjernet += sum(histogram)
+            arter_ekskludert += 1
+            continue
+
+        # Godkjenn med artsspecifikk terskel
+        min_k = oppslag["min_konfidens"] or 0.0
+        nytt_histogram = [0] * 24
+        fjernet = 0
+
+        for hour, conf in conf_by_species[scientific_name]:
+            if conf >= min_k:
+                nytt_histogram[hour] += 1
+            else:
+                fjernet += 1
+
+        total = sum(nytt_histogram)
+
+        # Ikke vis art hvis alle deteksjoner ble filtrert bort
+        if total == 0:
+            totalt_fjernet += fjernet
+            arter_ekskludert += 1
+            continue
+
+        if fjernet > 0:
+            arter_justert += 1
+        totalt_fjernet += fjernet
+
+        common_name = species_mapping.get(scientific_name, "Ukjent")
+        filtered.append({
+            "scientific_name": scientific_name,
+            "common_name":     common_name,
+            "histogram":       nytt_histogram,
+            "total_count":     total,
+            "sone":            oppslag["sone"],
+            "min_konfidens":   min_k,
+            "fjernet":         fjernet,
+            "i_tabell":        True,
+        })
+
+    filtered.sort(key=lambda x: x["total_count"], reverse=True)
+
+    summary = {
+        "totalt_fjernet":   totalt_fjernet,
+        "arter_ekskludert": arter_ekskludert,
+        "arter_justert":    arter_justert,
+    }
+    return filtered, summary
+
+# ----------------------------------------------------------------
 # Ruter – offentlige
 # ----------------------------------------------------------------
 
@@ -227,31 +377,67 @@ async def calendar_view(request: Request, year: int = None, month: int = None):
 @app.get("/show_detections", response_class=HTMLResponse)
 async def show_detections(request: Request, date: str, min_conf: float = 0.8):
     from collections import defaultdict
-    detections = get_detections_for_date(date, min_conf)
 
+    month = int(date[5:7])
+
+    # Hent rådata uten terskel – filtrering skjer i _filter_species
+    raw_rows = api_get("/detections/by_date", {"date": date, "min_conf": 0.0})
     species_histogram = defaultdict(lambda: [0] * 24)
-    for scientific_name, hour in detections:
-        species_histogram[scientific_name][hour] += 1
+    raw_detections = []
+    for row in raw_rows:
+        sci  = row["scientific_name"]
+        hour = row["hour"]
+        conf = row.get("confidence", 0.0)
+        # Anvend globalt min_conf-gulv her, før filtertabellen
+        if conf < min_conf:
+            continue
+        species_histogram[sci][hour] += 1
+        raw_detections.append((sci, hour, conf))
 
-    species_data = []
-    for scientific_name, histogram in species_histogram.items():
-        common_name = species_mapping.get(scientific_name, "Ukjent")
-        total_count = sum(histogram)
-        species_data.append({
-            "scientific_name": scientific_name,
-            "common_name": common_name,
-            "histogram": histogram,
-            "total_count": total_count
-        })
-
-    species_data.sort(key=lambda x: x["total_count"], reverse=True)
+    species_data, _ = _filter_species(
+        dict(species_histogram), raw_detections, month
+    )
 
     return templates.TemplateResponse(request, "show_detections.html", {
-        "date": date,
+        "date":         date,
         "species_data": species_data,
-        "min_conf": min_conf,
-        "title": f"Deteksjoner for {date}"
+        "min_conf":     min_conf,
+        "title":        f"Deteksjoner for {date}"
     })
+
+
+@app.get("/show_filtered_detections", response_class=HTMLResponse)
+async def show_filtered_detections(request: Request, date: str):
+    from collections import defaultdict
+
+    month = int(date[5:7])
+
+    # Hent alle rådeteksjoner uten terskel (vi filtrerer selv)
+    raw_rows = api_get("/detections/by_date", {"date": date, "min_conf": 0.0})
+
+    # Bygg histogram + konfidensliste
+    species_histogram = defaultdict(lambda: [0] * 24)
+    raw_detections = []
+    for row in raw_rows:
+        sci  = row["scientific_name"]
+        hour = row["hour"]
+        conf = row.get("confidence", 0.0)
+        species_histogram[sci][hour] += 1
+        raw_detections.append((sci, hour, conf))
+
+    species_data, filter_summary = _filter_species(
+        dict(species_histogram), raw_detections, month
+    )
+
+    return templates.TemplateResponse(request, "show_filtered_detections.html", {
+        "request":        request,
+        "date":           date,
+        "species_data":   species_data,
+        "filter_summary": filter_summary,
+        "title":          f"Filtrerte deteksjoner for {date}",
+    })
+
+
 
 
 @app.get("/species_details", response_class=HTMLResponse)
@@ -471,3 +657,12 @@ async def species_detections_admin_archive(
         url=f"/species_detections_admin?scientific_name={scientific_name}&date={date}",
         status_code=303
     )
+
+@app.get("/admin/reload_filter", response_class=HTMLResponse)
+async def reload_filter(request: Request):
+    redir = require_auth(request, "/admin/reload_filter")
+    if redir:
+        return redir
+    global filter_tabell
+    filter_tabell = _load_filter_table()
+    return HTMLResponse("<p>Filtertabell lastet på nytt. <a href='/'>Tilbake</a></p>")

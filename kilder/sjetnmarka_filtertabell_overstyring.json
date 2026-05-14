@@ -1,0 +1,45 @@
+[
+  {
+    "vitenskapelig_navn": "Fulica atra",
+    "navn": "sothøne",
+    "ekskluder_alle_maaneder": true
+  },
+  {
+    "vitenskapelig_navn": "Ardea cinerea",
+    "navn": "gråhegre",
+    "ekskluder_alle_maaneder": true
+  },
+  {
+    "vitenskapelig_navn": "Cygnus cygnus",
+    "navn": "sangsvane",
+    "maaneder": [
+      {"mnd": 4, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 5, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 6, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 7, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 8, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 9, "status": "ekskluder", "min_konfidens": null, "sone": "rød"},
+      {"mnd": 10, "status": "ekskluder", "min_konfidens": null, "sone": "rød"}
+    ]
+  },
+  {
+    "vitenskapelig_navn": "Anas crecca",
+    "navn": "krikkand",
+    "ekskluder_alle_maaneder": true
+  },
+  {
+    "vitenskapelig_navn": "Mareca strepera",
+    "navn": "snadderand",
+    "ekskluder_alle_maaneder": true
+  },
+  {
+    "vitenskapelig_navn": "Pernis apivorus",
+    "navn": "vepsesvåk",
+    "ekskluder_alle_maaneder": true
+  },
+  {
+    "vitenskapelig_navn": "Buteo buteo",
+    "navn": "musvåk",
+    "ekskluder_alle_maaneder": true
+  }
+]
